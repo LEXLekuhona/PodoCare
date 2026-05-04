@@ -1,0 +1,50 @@
+import { execSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+
+import { PostgreSqlContainer } from '@testcontainers/postgresql';
+import { RedisContainer } from '@testcontainers/redis';
+
+/**
+ * Jest globalSetup: поднимает Postgres и Redis в контейнерах ОДИН раз
+ * на весь запуск и применяет миграции. Контейнеры останавливаются в
+ * global-teardown.ts. Идентификаторы контейнеров сохраняются в
+ * globalThis.__TESTCONTAINERS__, откуда их забирает teardown.
+ */
+export default async function globalSetup(): Promise<void> {
+  // eslint-disable-next-line no-console
+  console.log('\n🐘  Запуск Postgres testcontainer…');
+  const postgres = await new PostgreSqlContainer('postgres:16-alpine')
+    .withDatabase('podocare_test')
+    .withUsername('podocare')
+    .withPassword('podocare_test_pwd')
+    .start();
+
+  // eslint-disable-next-line no-console
+  console.log('🧠  Запуск Redis testcontainer…');
+  const redis = await new RedisContainer('redis:7-alpine').start();
+
+  const databaseUrl = postgres.getConnectionUri();
+  const redisUrl = `redis://${redis.getHost()}:${redis.getMappedPort(6379)}`;
+
+  process.env.DATABASE_URL = databaseUrl;
+  process.env.TEST_DATABASE_URL = databaseUrl;
+  process.env.REDIS_URL = redisUrl;
+  process.env.NODE_ENV = 'test';
+  process.env.LOG_LEVEL = 'silent';
+  process.env.JWT_ACCESS_SECRET = randomBytes(48).toString('base64');
+  process.env.JWT_REFRESH_SECRET = randomBytes(48).toString('base64');
+  process.env.DATA_ENCRYPTION_KEY = randomBytes(32).toString('base64');
+  process.env.OTP_PROVIDER = 'console';
+
+  // eslint-disable-next-line no-console
+  console.log('🏗  Применение миграций Prisma…');
+  execSync('pnpm prisma migrate deploy', {
+    stdio: 'inherit',
+    env: { ...process.env, DATABASE_URL: databaseUrl },
+  });
+
+  (globalThis as unknown as { __TESTCONTAINERS__: unknown }).__TESTCONTAINERS__ = {
+    postgres,
+    redis,
+  };
+}

@@ -1,0 +1,57 @@
+{
+  "name": "podocare",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PodoCare - экосистема для подологических студий: мобильное приложение клиента, интерфейс студии (планшет), административная панель и бэкенд.",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:unit": "turbo run test:unit",
+    "test:integration": "turbo run test:integration",
+    "test:e2e": "turbo run test:e2e",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .gitignore",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .gitignore",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:reset": "docker compose down -v && docker compose up -d",
+    "dev:stack": "turbo run dev --filter=@podocare/api --filter=@podocare/mobile --parallel",
+    "dev:stack:admin": "turbo run dev --filter=@podocare/api --filter=@podocare/admin --parallel",
+    "bootstrap:dev-admin": "pnpm --filter @podocare/api create-dev-admin",
+    "dev:stack:infra": "docker compose up -d && node scripts/wait-for-infra.cjs && pnpm --filter @podocare/api exec prisma generate && pnpm --filter @podocare/api exec prisma migrate deploy && pnpm dev:stack",
+    "dev:mobile": "pnpm --filter @podocare/mobile dev",
+    "dev:mobile:clear": "pnpm --filter @podocare/mobile run dev:clear",
+    "dev:android": "docker compose up -d && node scripts/wait-for-infra.cjs && pnpm --filter @podocare/api exec prisma generate && pnpm --filter @podocare/api exec prisma migrate deploy && pnpm --filter @podocare/api prisma:seed && pnpm dev:stack",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "babel-plugin-module-resolver": "^5.0.3",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.3",
+    "wait-on": "^9.0.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/client",
+      "@prisma/engines",
+      "argon2",
+      "esbuild",
+      "prisma"
+    ]
+  },
+  "dependencies": {
+    "react-native-svg": "^15.15.4"
+  }
+}

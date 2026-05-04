@@ -1,0 +1,1774 @@
+// =============================================================================
+// PodoCare — Prisma schema (v2, content-first).
+//
+// Принципы:
+// • Мульти-студийная модель: операционные сущности (услуги, записи, мастера)
+//   привязаны к studio_id. Контент, программы, квизы — глобальные для сети.
+// • Все ID — UUID v4, генерируются Postgres'ом.
+// • snake_case в БД, camelCase в коде (@map).
+// • Даты в UTC (@db.Timestamptz).
+// • Денежные суммы — целые числа в минимальных единицах валюты (копейки).
+// • Чувствительные медицинские данные шифруются на уровне приложения
+//   (AES-256-GCM). В БД — только cipher blob + iv + auth_tag.
+// • Фото/клинические снимки — НЕ храним (решение клиента).
+// • Soft delete не используется на старте. Аудит-лог фиксирует изменения.
+//
+// Ядро продукта — контент и прогрев:
+//   DiagnosticQuiz → ContentSeries → ContentCta → (Service | Program |
+//                                                   ContentSeries | PhysicalGood)
+//   FunnelEvent фиксирует путь пользователя для сегментации.
+// =============================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearchPostgres"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// ENUMS — продублированы в packages/shared-types/src/enums.ts
+// =============================================================================
+
+enum UserRole {
+  CLIENT
+  SPECIALIST
+  STUDIO_ADMIN
+  NETWORK_OWNER
+  CONTENT_AUTHOR
+  SUPER_ADMIN
+
+  @@map("user_role")
+}
+
+enum AppointmentStatus {
+  DRAFT
+  PENDING
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED_BY_CLIENT
+  CANCELLED_BY_STUDIO
+  LATE_ARRIVAL
+  EARLY_ARRIVAL
+  NO_SHOW
+
+  @@map("appointment_status")
+}
+
+enum AppointmentSource {
+  MOBILE_APP
+  STUDIO
+  WALK_IN
+
+  @@map("appointment_source")
+}
+
+enum NotificationType {
+  APPOINTMENT_REMINDER
+  APPOINTMENT_CONFIRMATION
+  APPOINTMENT_CANCELLATION
+  APPOINTMENT_RESCHEDULED
+  PROMO_CODE_ISSUED
+  NEW_CONTENT
+  TREATMENT_PLAN_CREATED
+  QUIZ_FOLLOW_UP
+  PROGRAM_INQUIRY_REPLY
+  ORDER_UPDATE
+  SUPPORT_REPLY
+  SYSTEM
+
+  @@map("notification_type")
+}
+
+enum NotificationChannel {
+  PUSH
+  SMS
+  EMAIL
+  IN_APP
+
+  @@map("notification_channel")
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENDING
+  SENT
+  DELIVERED
+  FAILED
+  READ
+  SUPPRESSED
+
+  @@map("notification_status")
+}
+
+enum SmsProvider {
+  SMS_RU
+  SMSC
+  UNISENDER
+  SMS_AERO
+  CONSOLE
+
+  @@map("sms_provider")
+}
+
+enum PushProvider {
+  EXPO
+  FCM
+  APNS
+  CONSOLE
+
+  @@map("push_provider")
+}
+
+enum EmailProvider {
+  RESEND
+  POSTMARK
+  SMTP
+  CONSOLE
+
+  @@map("email_provider")
+}
+
+enum NotificationTemplateKey {
+  APPOINTMENT_CONFIRMATION
+  APPOINTMENT_REMINDER_24H
+  APPOINTMENT_REMINDER_1H
+  APPOINTMENT_REMINDER_15M
+  APPOINTMENT_CANCELLED
+  APPOINTMENT_RESCHEDULED
+  POST_VISIT_THANKYOU
+  TREATMENT_PLAN_READY
+  AUTH_OTP
+  PROGRAM_INQUIRY_REPLY
+  ORDER_STATUS_UPDATE
+  NEW_CONTENT_PUBLISHED
+  QUIZ_RESULT_READY
+  PROMO_CODE_ISSUED
+
+  @@map("notification_template_key")
+}
+
+enum PromoCodeType {
+  PERCENT_DISCOUNT
+  FIXED_DISCOUNT
+  FREE_PRODUCT
+  FREE_SERVICE
+
+  @@map("promo_code_type")
+}
+
+enum PromoCodeScope {
+  ALL_SERVICES
+  SPECIFIC_SERVICE
+  ALL_PHYSICAL_GOODS
+  SPECIFIC_PHYSICAL_GOOD
+  CONTENT_SERIES
+  PROGRAM
+
+  @@map("promo_code_scope")
+}
+
+enum ContentFormat {
+  ARTICLE
+  VIDEO
+  AUDIO
+  WEBINAR
+  QUIZ
+
+  @@map("content_format")
+}
+
+enum ContentAudience {
+  CLIENT
+  SPECIALIST
+  EVERYONE
+
+  @@map("content_audience")
+}
+
+enum ContentCtaTarget {
+  CONTENT_SERIES
+  PROGRAM
+  SERVICE
+  PHYSICAL_GOOD
+  QUIZ
+  PROGRAM_INQUIRY
+  EXTERNAL_URL
+
+  @@map("content_cta_target")
+}
+
+enum ProductType {
+  SERVICE
+  PROGRAM
+  DIGITAL_CONTENT
+  PHYSICAL_GOOD
+  AFFILIATE
+
+  @@map("product_type")
+}
+
+enum QuizQuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  SCALE
+  YES_NO
+  TEXT
+
+  @@map("quiz_question_type")
+}
+
+enum QuizResultLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+
+  @@map("quiz_result_level")
+}
+
+enum TreatmentPlanStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+
+  @@map("treatment_plan_status")
+}
+
+enum ProgramInquiryStatus {
+  NEW
+  IN_PROGRESS
+  CONTACTED
+  CONVERTED
+  LOST
+
+  @@map("program_inquiry_status")
+}
+
+enum OrderStatus {
+  PENDING
+  AWAITING_PAYMENT
+  PAID
+  SHIPPED
+  COMPLETED
+  CANCELLED
+  REFUNDED
+
+  @@map("order_status")
+}
+
+enum PaymentMethod {
+  SBP
+  CARD
+  INSTALLMENT
+  IN_STUDIO
+
+  @@map("payment_method")
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+
+  @@map("payment_status")
+}
+
+enum PaymentProvider {
+  YOOKASSA
+  TINKOFF
+  SBER
+  MANUAL
+
+  @@map("payment_provider")
+}
+
+enum InstallmentProvider {
+  TINKOFF_INSTALLMENT
+  SOVCOMBANK_HALVA
+  OTHER
+
+  @@map("installment_provider")
+}
+
+enum InstallmentRequestStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+
+  @@map("installment_request_status")
+}
+
+enum DeliveryMethod {
+  PICKUP
+  CDEK_PVZ
+  CDEK_COURIER
+  RUSSIAN_POST
+  YANDEX_DELIVERY
+
+  @@map("delivery_method")
+}
+
+enum ShipmentStatus {
+  NEW
+  PACKED
+  HANDED_TO_CARRIER
+  IN_TRANSIT
+  READY_FOR_PICKUP
+  DELIVERED
+  RETURNED
+
+  @@map("shipment_status")
+}
+
+enum FunnelEventType {
+  APP_OPEN
+  SIGNUP
+  QUIZ_STARTED
+  QUIZ_COMPLETED
+  CONTENT_VIEWED
+  CONTENT_COMPLETED
+  CTA_CLICKED
+  APPOINTMENT_BOOKED
+  APPOINTMENT_ATTENDED
+  PROGRAM_INQUIRY_SUBMITTED
+  ORDER_CREATED
+  PAYMENT_SUCCEEDED
+  PROGRAM_CONVERTED
+
+  @@map("funnel_event_type")
+}
+
+enum ShiftStatus {
+  SCHEDULED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+
+  @@map("shift_status")
+}
+
+enum ConsentType {
+  PERSONAL_DATA
+  MEDICAL_INFORMATION
+  PROCEDURE_CONSENT
+  MARKETING_COMMUNICATIONS
+  TERMS_OF_SERVICE
+
+  @@map("consent_type")
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+
+  @@map("support_ticket_status")
+}
+
+enum FaqCategory {
+  BOOKING
+  PAYMENT
+  PROCEDURES
+  EDUCATION
+  PROGRAMS
+  ACCOUNT
+  DELIVERY
+  OTHER
+
+  @@map("faq_category")
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  FAILED_LOGIN
+  SENSITIVE_DATA_ACCESS
+
+  @@map("audit_action")
+}
+
+// =============================================================================
+// ТЕНАНТСТВО: сеть → студии
+// =============================================================================
+
+/// Корень тенантства — сеть студий.
+/// Контент / программы / квизы принадлежат сети, а не отдельной студии.
+model Network {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String   @unique
+  description String?
+  logoUrl     String?  @map("logo_url")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  studios               Studio[]
+  contentSeries         ContentSeries[]
+  contentItems          ContentItem[]
+  programs              Program[]
+  diagnosticQuizzes     DiagnosticQuiz[]
+  physicalGoods         PhysicalGood[]
+  programInquiries      ProgramInquiry[]
+  notificationTemplates NotificationTemplate[]
+  reminderPolicies      ReminderPolicy[]
+
+  @@map("networks")
+}
+
+/// Физическая студия. Здесь происходят приёмы.
+model Studio {
+  id            String   @id @default(uuid()) @db.Uuid
+  networkId     String   @map("network_id") @db.Uuid
+  name          String
+  address       String
+  city          String
+  /// IANA timezone, например "Europe/Moscow".
+  timezone      String   @default("Europe/Moscow")
+  phone         String?
+  email         String?
+  description   String?
+  coverImageUrl String?  @map("cover_image_url")
+  latitude      Decimal? @db.Decimal(10, 7)
+  longitude     Decimal? @db.Decimal(10, 7)
+  isActive      Boolean  @default(true) @map("is_active")
+  /// Часы работы по дням недели (JSON: {0: {open: "09:00", close: "21:00"}, ...}).
+  /// 0 = воскресенье, 6 = суббота. null = выходной.
+  openingHours  Json     @map("opening_hours")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  network         Network             @relation(fields: [networkId], references: [id], onDelete: Restrict)
+  users           User[]
+  specialists     SpecialistProfile[]
+  services        Service[]
+  appointments    Appointment[]
+  shifts          SpecialistShift[]
+  walkInClients   WalkInClient[]
+  promoCodes      PromoCode[]
+  closedDays      StudioClosedDay[]
+  supportTickets  SupportTicket[]
+  feedbackSurveys FeedbackSurvey[]
+  orders          Order[]
+  treatmentPlans  TreatmentPlan[]
+  specialistStudios SpecialistStudio[]
+
+  @@index([networkId])
+  @@index([isActive])
+  @@map("studios")
+}
+
+/// Дни, когда студия полностью закрыта (праздник, санобработка).
+model StudioClosedDay {
+  id        String   @id @default(uuid()) @db.Uuid
+  studioId  String   @map("studio_id") @db.Uuid
+  date      DateTime @db.Date
+  reason    String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  studio Studio @relation(fields: [studioId], references: [id], onDelete: Cascade)
+
+  @@unique([studioId, date])
+  @@map("studio_closed_days")
+}
+
+// =============================================================================
+// ПОЛЬЗОВАТЕЛИ И РОЛИ
+// =============================================================================
+
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  studioId        String?   @map("studio_id") @db.Uuid
+  role            UserRole
+  phone           String    @unique
+  phoneVerifiedAt DateTime? @map("phone_verified_at") @db.Timestamptz(6)
+  email           String?   @unique
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(6)
+  /// Argon2id hash. null для клиентов (они логинятся через OTP).
+  passwordHash    String?   @map("password_hash")
+  /// 4-значный PIN для персонала на планшете (hash Argon2id).
+  pinHash         String?   @map("pin_hash")
+  firstName       String    @map("first_name")
+  lastName        String    @map("last_name")
+  middleName      String?   @map("middle_name")
+  birthDate       DateTime? @map("birth_date") @db.Date
+  gender          String?
+  avatarUrl       String?   @map("avatar_url")
+  locale          String    @default("ru")
+  timezone        String    @default("Europe/Moscow")
+  isActive        Boolean   @default(true) @map("is_active")
+  lastLoginAt     DateTime? @map("last_login_at") @db.Timestamptz(6)
+  /// Источник входа в воронку: "referral", "instagram", "walkin", "qr_studio", ...
+  /// Для аналитики эффективности каналов привлечения.
+  acquisitionSource String? @map("acquisition_source")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  studio                Studio?               @relation(fields: [studioId], references: [id], onDelete: SetNull)
+  specialistProfile     SpecialistProfile?
+  clientProfile         ClientProfile?
+  sessions              AuthSession[]
+  otpCodes              OtpCode[]
+  appointmentsClient    Appointment[]         @relation("AppointmentClient")
+  medicalCard           ClientMedicalCard?
+  consents              Consent[]
+  notifications         Notification[]
+  auditLogs             AuditLog[]
+  supportTicketsOpened  SupportTicket[]       @relation("SupportTicketUser")
+  supportMessages       SupportMessage[]
+  feedbackSurveys       FeedbackSurvey[]
+  contentProgress       ContentItemProgress[]
+  quizResponses         DiagnosticQuizResponse[]
+  treatmentPlansClient  TreatmentPlan[]       @relation("TreatmentPlanClient")
+  treatmentPlansAuthor  TreatmentPlan[]       @relation("TreatmentPlanAuthor")
+  visitProtocolsAuthor  AppointmentProtocol[] @relation("ProtocolAuthor")
+  orders                Order[]
+  programInquiries      ProgramInquiry[]      @relation("ProgramInquiryClient")
+  programInquiriesAssigned ProgramInquiry[]   @relation("ProgramInquiryAssignee")
+  installmentRequests   InstallmentRequest[]
+  funnelEvents          FunnelEvent[]
+  contentAuthored       ContentItem[]         @relation("ContentAuthor")
+  seriesAuthored        ContentSeries[]       @relation("SeriesAuthor")
+  programsAuthored      Program[]             @relation("ProgramAuthor")
+  pushDevices           PushDevice[]
+  notificationPreference NotificationPreference?
+
+  @@index([studioId])
+  @@index([role])
+  @@index([isActive])
+  @@index([acquisitionSource])
+  @@map("users")
+}
+
+/// Профиль специалиста (подолога).
+model SpecialistProfile {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @unique @map("user_id") @db.Uuid
+  /// Основная студия (для учётной записи user.studioId и обратной совместимости).
+  studioId        String   @map("studio_id") @db.Uuid
+  bio             String?
+  specializations String[] @default([])
+  certificateUrls String[] @default([]) @map("certificate_urls")
+  experienceYears Int?     @map("experience_years")
+  rating          Decimal  @default(0) @db.Decimal(3, 2)
+  reviewsCount    Int      @default(0) @map("reviews_count")
+  isAcceptingNew  Boolean  @default(true) @map("is_accepting_new")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studio       Studio              @relation(fields: [studioId], references: [id], onDelete: Restrict)
+  studios      SpecialistStudio[]
+  services     SpecialistService[]
+  shifts       SpecialistShift[]
+  appointments Appointment[]
+
+  @@index([studioId])
+  @@map("specialist_profiles")
+}
+
+/// В каких студиях ведёт приём специалист (включая основную studioId профиля).
+model SpecialistStudio {
+  specialistProfileId String @map("specialist_profile_id") @db.Uuid
+  studioId            String @map("studio_id") @db.Uuid
+
+  specialistProfile SpecialistProfile @relation(fields: [specialistProfileId], references: [id], onDelete: Cascade)
+  studio            Studio            @relation(fields: [studioId], references: [id], onDelete: Cascade)
+
+  @@id([specialistProfileId, studioId])
+  @@index([studioId])
+  @@map("specialist_studios")
+}
+
+/// Профиль клиента.
+model ClientProfile {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @unique @map("user_id") @db.Uuid
+  loyaltyPoints    Int       @default(0) @map("loyalty_points")
+  referralCode     String    @unique @map("referral_code")
+  referredByUserId String?   @map("referred_by_user_id") @db.Uuid
+  tosAcceptedAt    DateTime? @map("tos_accepted_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("client_profiles")
+}
+
+/// Клиент без аккаунта (walk-in).
+model WalkInClient {
+  id           String   @id @default(uuid()) @db.Uuid
+  studioId     String   @map("studio_id") @db.Uuid
+  firstName    String   @map("first_name")
+  lastName     String   @map("last_name")
+  phone        String
+  note         String?
+  linkedUserId String?  @map("linked_user_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  studio       Studio        @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  appointments Appointment[] @relation("AppointmentWalkIn")
+
+  @@index([studioId, phone])
+  @@map("walk_in_clients")
+}
+
+// =============================================================================
+// АУТЕНТИФИКАЦИЯ
+// =============================================================================
+
+model AuthSession {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  refreshTokenHash String    @unique @map("refresh_token_hash")
+  userAgent        String?   @map("user_agent")
+  ipAddress        String?   @map("ip_address")
+  deviceType       String    @map("device_type")
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+model OtpCode {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String?   @map("user_id") @db.Uuid
+  phone       String
+  codeHash    String    @map("code_hash")
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5) @map("max_attempts")
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt      DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([phone, expiresAt])
+  @@map("otp_codes")
+}
+
+// =============================================================================
+// УСЛУГИ, РАСПИСАНИЕ, ЗАПИСИ
+// =============================================================================
+
+/// Услуга (процедура) в студии. Это бизнес-сущность расписания.
+/// Также может выступать целью CTA из контента (ContentCta.targetServiceId).
+model Service {
+  id                   String   @id @default(uuid()) @db.Uuid
+  studioId             String   @map("studio_id") @db.Uuid
+  name                 String
+  description          String?
+  durationMinutes      Int      @map("duration_minutes")
+  priceMinor           Int      @map("price_minor")
+  currency             String   @default("RUB")
+  prepaymentRequired   Boolean  @default(false) @map("prepayment_required")
+  prepaymentMinor      Int?     @map("prepayment_minor")
+  imageUrl             String?  @map("image_url")
+  requiresConsultation Boolean  @default(false) @map("requires_consultation")
+  isActive             Boolean  @default(true) @map("is_active")
+  sortOrder            Int      @default(0) @map("sort_order")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  studio       Studio              @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  specialists  SpecialistService[]
+  appointments Appointment[]
+  promoCodes   PromoCode[]         @relation("PromoCodeService")
+  ctas         ContentCta[]        @relation("CtaService")
+
+  @@index([studioId, isActive])
+  @@map("services")
+}
+
+model SpecialistService {
+  specialistId String @map("specialist_id") @db.Uuid
+  serviceId    String @map("service_id") @db.Uuid
+
+  specialist SpecialistProfile @relation(fields: [specialistId], references: [id], onDelete: Cascade)
+  service    Service           @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@id([specialistId, serviceId])
+  @@map("specialist_services")
+}
+
+model SpecialistShift {
+  id           String      @id @default(uuid()) @db.Uuid
+  specialistId String      @map("specialist_id") @db.Uuid
+  studioId     String      @map("studio_id") @db.Uuid
+  startsAt     DateTime    @map("starts_at") @db.Timestamptz(6)
+  endsAt       DateTime    @map("ends_at") @db.Timestamptz(6)
+  status       ShiftStatus @default(SCHEDULED)
+  note         String?
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  specialist SpecialistProfile @relation(fields: [specialistId], references: [id], onDelete: Cascade)
+  studio     Studio            @relation(fields: [studioId], references: [id], onDelete: Cascade)
+
+  @@index([specialistId, startsAt])
+  @@index([studioId, startsAt])
+  @@map("specialist_shifts")
+}
+
+/// Запись на приём.
+///
+/// Уникальность слота гарантируется на уровне сервиса (advisory lock
+/// + проверка пересечений + проверка активной смены).
+///
+/// source отличает внутренние записи от импортированных из iKlients.
+/// externalId — ID записи во внешней системе (для идемпотентной синхронизации).
+model Appointment {
+  id                 String            @id @default(uuid()) @db.Uuid
+  studioId           String            @map("studio_id") @db.Uuid
+  specialistId       String            @map("specialist_id") @db.Uuid
+  serviceId          String            @map("service_id") @db.Uuid
+  clientUserId       String?           @map("client_user_id") @db.Uuid
+  walkInClientId     String?           @map("walk_in_client_id") @db.Uuid
+  startsAt           DateTime          @map("starts_at") @db.Timestamptz(6)
+  endsAt             DateTime          @map("ends_at") @db.Timestamptz(6)
+  status             AppointmentStatus @default(PENDING)
+  source             AppointmentSource @default(MOBILE_APP)
+  totalMinor         Int               @map("total_minor")
+  currency           String            @default("RUB")
+  appliedPromoCodeId String?           @map("applied_promo_code_id") @db.Uuid
+  discountMinor      Int               @default(0) @map("discount_minor")
+  /// Что беспокоит клиента — выбирается при создании записи.
+  healthConcernIds   String[]          @default([]) @map("health_concern_ids") @db.Uuid
+  clientNote         String?           @map("client_note")
+  specialistNote     String?           @map("specialist_note")
+  checkedInAt        DateTime?         @map("checked_in_at") @db.Timestamptz(6)
+  completedAt        DateTime?         @map("completed_at") @db.Timestamptz(6)
+  cancelledAt        DateTime?         @map("cancelled_at") @db.Timestamptz(6)
+  cancellationReason String?           @map("cancellation_reason")
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  studio      Studio               @relation(fields: [studioId], references: [id], onDelete: Restrict)
+  specialist  SpecialistProfile    @relation(fields: [specialistId], references: [id], onDelete: Restrict)
+  service     Service              @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  client      User?                @relation("AppointmentClient", fields: [clientUserId], references: [id], onDelete: SetNull)
+  walkIn      WalkInClient?        @relation("AppointmentWalkIn", fields: [walkInClientId], references: [id], onDelete: SetNull)
+  promoCode   PromoCode?           @relation(fields: [appliedPromoCodeId], references: [id], onDelete: SetNull)
+  consents    Consent[]
+  protocol    AppointmentProtocol?
+  treatmentPlans TreatmentPlan[]
+
+  @@index([studioId, startsAt])
+  @@index([specialistId, startsAt])
+  @@index([clientUserId])
+  @@index([status])
+  @@index([source])
+  @@map("appointments")
+}
+
+// =============================================================================
+// ДОКУМЕНТАЦИЯ: медкарта, протокол визита, план лечения, согласия
+// =============================================================================
+
+/// Медицинская карта клиента. Заполняет ТОЛЬКО мастер после приёма.
+/// Чувствительные поля — в data_encrypted (AES-256-GCM).
+model ClientMedicalCard {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @unique @map("user_id") @db.Uuid
+  /// Зашифрованный JSON: { allergies, chronicConditions, medications,
+  /// diabetesType, gynaecological, neurological, ... }.
+  dataEncrypted Bytes?   @map("data_encrypted")
+  dataIv        Bytes?   @map("data_iv")
+  dataAuthTag   Bytes?   @map("data_auth_tag")
+  keyVersion    Int      @default(1) @map("key_version")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("client_medical_cards")
+}
+
+/// Протокол визита: что делали, диагноз. Заполняет мастер после приёма.
+/// Видимость для клиента контролируется полем client_visible.
+/// Фото "до/после" сознательно не храним.
+model AppointmentProtocol {
+  id            String   @id @default(uuid()) @db.Uuid
+  appointmentId String   @unique @map("appointment_id") @db.Uuid
+  authorUserId  String   @map("author_user_id") @db.Uuid
+  /// Выполненные процедуры — массив тегов/названий для поиска.
+  proceduresDone String[] @default([]) @map("procedures_done")
+  /// Диагноз / предварительные выводы мастера.
+  diagnosis     String?
+  /// Применённые материалы/средства.
+  materialsUsed String?  @map("materials_used")
+  /// Дополнительные наблюдения (внутренние).
+  internalNote  String?  @map("internal_note")
+  /// Должен ли клиент видеть этот протокол целиком в своём кабинете.
+  clientVisible Boolean  @default(false) @map("client_visible")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  author      User        @relation("ProtocolAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+
+  @@index([authorUserId])
+  @@map("appointment_protocols")
+}
+
+/// План лечения: что клиенту делать дома / между визитами.
+/// Создаёт мастер, клиент видит в своём кабинете.
+model TreatmentPlan {
+  id            String              @id @default(uuid()) @db.Uuid
+  clientUserId  String              @map("client_user_id") @db.Uuid
+  authorUserId  String              @map("author_user_id") @db.Uuid
+  studioId      String              @map("studio_id") @db.Uuid
+  /// Связан с конкретным визитом (если был создан после приёма).
+  appointmentId String?             @map("appointment_id") @db.Uuid
+  title         String
+  /// Структурированные пункты плана: JSON [{step: 1, text, dueInDays, doneAt?}, ...].
+  steps         Json
+  /// Товары/услуги/контент, рекомендованные в плане.
+  recommendedPhysicalGoodIds String[] @default([]) @map("recommended_physical_good_ids") @db.Uuid
+  recommendedContentSeriesIds String[] @default([]) @map("recommended_content_series_ids") @db.Uuid
+  validFrom     DateTime            @map("valid_from") @db.Timestamptz(6)
+  validUntil    DateTime?           @map("valid_until") @db.Timestamptz(6)
+  status        TreatmentPlanStatus @default(ACTIVE)
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  client      User         @relation("TreatmentPlanClient", fields: [clientUserId], references: [id], onDelete: Cascade)
+  author      User         @relation("TreatmentPlanAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  studio      Studio       @relation(fields: [studioId], references: [id], onDelete: Restrict)
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  @@index([clientUserId, status])
+  @@index([studioId])
+  @@map("treatment_plans")
+}
+
+/// Справочник "что беспокоит" — выбирается клиентом при создании записи или в квизе.
+model HealthConcern {
+  id          String   @id @default(uuid()) @db.Uuid
+  slug        String   @unique
+  title       String
+  description String?
+  iconUrl     String?  @map("icon_url")
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("health_concerns")
+}
+
+/// Электронные согласия (обработка ПДн, на процедуру, на маркетинг, TOS).
+model Consent {
+  id              String      @id @default(uuid()) @db.Uuid
+  userId          String      @map("user_id") @db.Uuid
+  type            ConsentType
+  documentVersion String      @map("document_version")
+  documentUrl     String?     @map("document_url")
+  appointmentId   String?     @map("appointment_id") @db.Uuid
+  accepted        Boolean
+  ipAddress       String?     @map("ip_address")
+  userAgent       String?     @map("user_agent")
+  deviceInfo      String?     @map("device_info")
+  signedAt        DateTime    @map("signed_at") @db.Timestamptz(6)
+  revokedAt       DateTime?   @map("revoked_at") @db.Timestamptz(6)
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  @@index([userId, type])
+  @@map("consents")
+}
+
+// =============================================================================
+// КОНТЕНТ (ядро продукта). Только владелец бренда создаёт контент.
+// =============================================================================
+
+/// Серия контента — курс/подборка из нескольких единиц (ContentItem).
+/// Может быть бесплатной (priceMinor = 0) или платной (priceMinor > 0, тогда
+/// доступ открывается через Order → Payment).
+model ContentSeries {
+  id            String          @id @default(uuid()) @db.Uuid
+  networkId     String          @map("network_id") @db.Uuid
+  authorUserId  String          @map("author_user_id") @db.Uuid
+  slug          String          @unique
+  title         String
+  subtitle      String?
+  description   String?
+  coverImageUrl String?         @map("cover_image_url")
+  audience      ContentAudience @default(CLIENT)
+  /// Теги для подбора/рекомендаций (связь с HealthConcern через slug/id).
+  tags          String[]        @default([])
+  /// 0 если бесплатная серия. Иначе — цена всей серии в минимальных единицах.
+  priceMinor    Int             @default(0) @map("price_minor")
+  currency      String          @default("RUB")
+  /// Сортировка в карточке "Серии".
+  sortOrder     Int             @default(0) @map("sort_order")
+  isPublished   Boolean         @default(false) @map("is_published")
+  publishedAt   DateTime?       @map("published_at") @db.Timestamptz(6)
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  network     Network       @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  author      User          @relation("SeriesAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  items       ContentItem[]
+  ctas        ContentCta[]  @relation("CtaSeries")
+  targetedByCtas ContentCta[] @relation("CtaTargetSeries")
+
+  @@index([networkId, isPublished])
+  @@index([audience])
+  @@map("content_series")
+}
+
+/// Единица контента: видео / статья / аудио / вебинар / квиз.
+/// Принадлежит серии (обязательно) — даже одиночный материал лежит в "серии из одного элемента".
+model ContentItem {
+  id              String          @id @default(uuid()) @db.Uuid
+  networkId       String          @map("network_id") @db.Uuid
+  seriesId        String          @map("series_id") @db.Uuid
+  authorUserId    String          @map("author_user_id") @db.Uuid
+  slug            String          @unique
+  title           String
+  description     String?
+  format          ContentFormat
+  audience        ContentAudience @default(CLIENT)
+  /// Произвольное тело: markdown для статей, {videoUrl, hlsUrl} для видео,
+  /// {audioUrl} для аудио, {scheduledAt, zoomUrl} для вебинаров, {quizId} для квиза.
+  body            Json
+  coverImageUrl   String?         @map("cover_image_url")
+  durationSeconds Int?            @map("duration_seconds")
+  /// Порядок внутри серии.
+  sortOrder       Int             @default(0) @map("sort_order")
+  /// Бесплатный "трейлер" даже в платной серии (для прогрева).
+  isFreePreview   Boolean         @default(false) @map("is_free_preview")
+  tags            String[]        @default([])
+  isPublished     Boolean         @default(false) @map("is_published")
+  publishedAt     DateTime?       @map("published_at") @db.Timestamptz(6)
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  network  Network               @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  series   ContentSeries         @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  author   User                  @relation("ContentAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  ctas     ContentCta[]          @relation("CtaItem")
+  progress ContentItemProgress[]
+
+  @@index([seriesId, sortOrder])
+  @@index([format, audience, isPublished])
+  @@map("content_items")
+}
+
+/// CTA — призыв к действию в конце/внутри контента. Главный инструмент прогрева:
+/// после видео о натуропатии — CTA "Узнать о программе 6 мес".
+model ContentCta {
+  id             String           @id @default(uuid()) @db.Uuid
+  /// CTA может принадлежать либо серии (показ на обложке), либо отдельной единице.
+  seriesId       String?          @map("series_id") @db.Uuid
+  itemId         String?          @map("item_id") @db.Uuid
+  /// Куда ведём.
+  target         ContentCtaTarget
+  /// Полиморфная ссылка — заполнено соответствующее target полe.
+  targetProgramId        String? @map("target_program_id") @db.Uuid
+  targetSeriesId         String? @map("target_series_id") @db.Uuid
+  targetServiceId        String? @map("target_service_id") @db.Uuid
+  targetPhysicalGoodId   String? @map("target_physical_good_id") @db.Uuid
+  targetQuizId           String? @map("target_quiz_id") @db.Uuid
+  targetExternalUrl      String? @map("target_external_url")
+  /// Текст кнопки ("Узнать подробнее", "Записаться", ...).
+  label          String
+  /// Небольшое пояснение/подзаголовок над кнопкой.
+  subtitle       String?
+  sortOrder      Int              @default(0) @map("sort_order")
+  isActive       Boolean          @default(true) @map("is_active")
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  series         ContentSeries? @relation("CtaSeries", fields: [seriesId], references: [id], onDelete: Cascade)
+  item           ContentItem?   @relation("CtaItem", fields: [itemId], references: [id], onDelete: Cascade)
+  targetProgram  Program?       @relation("CtaProgram", fields: [targetProgramId], references: [id], onDelete: SetNull)
+  targetSeries   ContentSeries? @relation("CtaTargetSeries", fields: [targetSeriesId], references: [id], onDelete: SetNull)
+  targetService  Service?       @relation("CtaService", fields: [targetServiceId], references: [id], onDelete: SetNull)
+  targetGood     PhysicalGood?  @relation("CtaGood", fields: [targetPhysicalGoodId], references: [id], onDelete: SetNull)
+  targetQuiz     DiagnosticQuiz? @relation("CtaQuiz", fields: [targetQuizId], references: [id], onDelete: SetNull)
+
+  @@index([seriesId])
+  @@index([itemId])
+  @@index([target])
+  @@map("content_ctas")
+}
+
+/// Прогресс прохождения единицы контента клиентом.
+model ContentItemProgress {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  itemId      String    @map("item_id") @db.Uuid
+  /// Процент прохождения 0-100 (для видео — сколько секунд просмотрено / duration).
+  percent     Int       @default(0)
+  /// Последняя позиция в секундах (для видео/аудио).
+  lastPositionSeconds Int? @map("last_position_seconds")
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item ContentItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemId])
+  @@map("content_item_progress")
+}
+
+// =============================================================================
+// ДИАГНОСТИЧЕСКИЙ КВИЗ (маркетинговый, не клинический)
+// =============================================================================
+
+/// Квиз — анкета для сегментации и прогрева. НЕ подменяет медкарту.
+/// Результат подбирает персональный контент, продукты, программу.
+model DiagnosticQuiz {
+  id            String   @id @default(uuid()) @db.Uuid
+  networkId     String   @map("network_id") @db.Uuid
+  slug          String   @unique
+  title         String
+  description   String?
+  coverImageUrl String?  @map("cover_image_url")
+  /// Короткое описание того, что клиент получит в результате.
+  outcomeTeaser String?  @map("outcome_teaser")
+  isPublished   Boolean  @default(false) @map("is_published")
+  version       Int      @default(1)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  network    Network                 @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  questions  DiagnosticQuestion[]
+  outcomes   DiagnosticOutcome[]
+  responses  DiagnosticQuizResponse[]
+  ctas       ContentCta[]             @relation("CtaQuiz")
+
+  @@index([networkId, isPublished])
+  @@map("diagnostic_quizzes")
+}
+
+model DiagnosticQuestion {
+  id          String           @id @default(uuid()) @db.Uuid
+  quizId      String           @map("quiz_id") @db.Uuid
+  order       Int
+  text        String
+  subtitle    String?
+  type        QuizQuestionType
+  /// Поле для категоризации ответа в скоринге: "pain", "sleep", "digestion", ...
+  scoringTag  String?          @map("scoring_tag")
+  isRequired  Boolean          @default(true) @map("is_required")
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  quiz        DiagnosticQuiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  options     DiagnosticAnswerOption[]
+
+  @@unique([quizId, order])
+  @@map("diagnostic_questions")
+}
+
+model DiagnosticAnswerOption {
+  id         String  @id @default(uuid()) @db.Uuid
+  questionId String  @map("question_id") @db.Uuid
+  order      Int
+  label      String
+  /// Скоринг: насколько ответ "говорит в сторону" проблемы. Например, -2..+2.
+  weight     Int     @default(0)
+  /// Дополнительные теги, которые выставляются при выборе этого варианта.
+  tags       String[] @default([])
+
+  question DiagnosticQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, order])
+  @@map("diagnostic_answer_options")
+}
+
+/// Возможный результат квиза: "у вас низкий/средний/высокий риск X, вам рекомендуем Y".
+/// Связывается с контентом/программой/товарами для персональной выдачи.
+model DiagnosticOutcome {
+  id                 String          @id @default(uuid()) @db.Uuid
+  quizId             String          @map("quiz_id") @db.Uuid
+  level              QuizResultLevel
+  title              String
+  description        String
+  /// Условие выбора — JSON {minScore, maxScore, tagsRequired[], tagsExcluded[]}.
+  /// Проверяется в порядке sortOrder; первое совпадение побеждает.
+  matchRule          Json            @map("match_rule")
+  sortOrder          Int             @default(0) @map("sort_order")
+  /// Что предлагаем показать клиенту — ID-ы сущностей.
+  recommendedContentSeriesIds String[] @default([]) @map("recommended_content_series_ids") @db.Uuid
+  recommendedProgramId        String?  @map("recommended_program_id") @db.Uuid
+  recommendedPhysicalGoodIds  String[] @default([]) @map("recommended_physical_good_ids") @db.Uuid
+  recommendedServiceIds       String[] @default([]) @map("recommended_service_ids") @db.Uuid
+  /// Основной CTA в экране результата.
+  primaryCtaTarget   ContentCtaTarget?
+  primaryCtaLabel    String?           @map("primary_cta_label")
+
+  quiz      DiagnosticQuiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  program   Program?       @relation("OutcomeProgram", fields: [recommendedProgramId], references: [id], onDelete: SetNull)
+  responses DiagnosticQuizResponse[]
+
+  @@index([quizId, sortOrder])
+  @@map("diagnostic_outcomes")
+}
+
+/// Прохождение квиза конкретным пользователем.
+model DiagnosticQuizResponse {
+  id              String          @id @default(uuid()) @db.Uuid
+  quizId          String          @map("quiz_id") @db.Uuid
+  /// Может быть null, если прошёл до регистрации (см. anonymousSessionId).
+  userId          String?         @map("user_id") @db.Uuid
+  /// Для анонимного прохождения — id сессии (из localStorage/AsyncStorage).
+  anonymousSessionId String?      @map("anonymous_session_id")
+  /// Версия квиза на момент прохождения.
+  quizVersion     Int             @map("quiz_version")
+  /// Ответы: JSON [{questionId, optionIds[], scalarValue?, textValue?}, ...].
+  answers         Json
+  /// Итоговый скор и разбивка по тегам.
+  totalScore      Int             @map("total_score")
+  tagScores       Json            @map("tag_scores")
+  /// Выбранный исход (DiagnosticOutcome).
+  outcomeId       String?         @map("outcome_id") @db.Uuid
+  resultLevel     QuizResultLevel
+  startedAt       DateTime        @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt     DateTime?       @map("completed_at") @db.Timestamptz(6)
+
+  quiz    DiagnosticQuiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  user    User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  outcome DiagnosticOutcome? @relation(fields: [outcomeId], references: [id], onDelete: SetNull)
+
+  @@index([userId, completedAt])
+  @@index([quizId, completedAt])
+  @@index([anonymousSessionId])
+  @@map("diagnostic_quiz_responses")
+}
+
+// =============================================================================
+// КАТАЛОГ: программы, физические товары (SERVICE уже есть выше)
+// =============================================================================
+
+/// Длительная программа сопровождения (например, "Интегративная натуропатия, 6 мес").
+/// Продаётся не в 1 клик: заявка → менеджер → созвон → договор → рассрочка.
+model Program {
+  id            String   @id @default(uuid()) @db.Uuid
+  networkId     String   @map("network_id") @db.Uuid
+  authorUserId  String   @map("author_user_id") @db.Uuid
+  slug          String   @unique
+  title         String
+  subtitle      String?
+  description   String
+  /// Длительность программы в днях.
+  durationDays  Int      @map("duration_days")
+  /// Ориентировочная цена (отображается на карточке). В минорных единицах.
+  priceMinor    Int      @map("price_minor")
+  currency      String   @default("RUB")
+  /// Доступна ли рассрочка и у каких банков.
+  installmentAvailable Boolean @default(true) @map("installment_available")
+  coverImageUrl String?  @map("cover_image_url")
+  /// Что входит: JSON [{title, description, icon?}, ...].
+  inclusions    Json
+  /// Этапы программы: JSON [{weekRange, title, description}, ...].
+  stages        Json
+  /// FAQ специально для страницы программы.
+  faq           Json?
+  isPublished   Boolean  @default(false) @map("is_published")
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  network         Network          @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  author          User             @relation("ProgramAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  inquiries       ProgramInquiry[]
+  installmentRequests InstallmentRequest[]
+  ctas            ContentCta[]     @relation("CtaProgram")
+  outcomes        DiagnosticOutcome[] @relation("OutcomeProgram")
+  promoCodes      PromoCode[]      @relation("PromoCodeProgram")
+
+  @@index([networkId, isPublished])
+  @@map("programs")
+}
+
+/// Физический товар: средства ухода за стопами, натуропатические средства.
+/// Продаётся через Order → Payment → доставка.
+model PhysicalGood {
+  id            String   @id @default(uuid()) @db.Uuid
+  networkId     String   @map("network_id") @db.Uuid
+  sku           String   @unique
+  slug          String   @unique
+  name          String
+  description   String?
+  brand         String?
+  category      String?
+  imageUrls     String[] @default([]) @map("image_urls")
+  priceMinor    Int      @map("price_minor")
+  currency      String   @default("RUB")
+  /// Вес в граммах для расчёта доставки.
+  weightGrams   Int?     @map("weight_grams")
+  /// Остаток на складе. null = не отслеживаем.
+  stock         Int?
+  /// Какие проблемы решает — для рекомендаций из плана лечения и результата квиза.
+  relatedHealthConcernIds String[] @default([]) @map("related_health_concern_ids") @db.Uuid
+  isActive      Boolean  @default(true) @map("is_active")
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  network    Network     @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+  promoCodes PromoCode[] @relation("PromoCodePhysicalGood")
+  ctas       ContentCta[] @relation("CtaGood")
+
+  @@index([networkId, isActive])
+  @@index([category])
+  @@map("physical_goods")
+}
+
+// =============================================================================
+// PROGRAM INQUIRY (заявки на длительные программы)
+// =============================================================================
+
+model ProgramInquiry {
+  id              String               @id @default(uuid()) @db.Uuid
+  networkId       String               @map("network_id") @db.Uuid
+  programId       String               @map("program_id") @db.Uuid
+  /// null если клиент оставил заявку до регистрации (только телефон/имя).
+  clientUserId    String?              @map("client_user_id") @db.Uuid
+  /// Контакты, если нет User.
+  firstName       String               @map("first_name")
+  phone           String
+  email           String?
+  message         String?
+  /// Менеджер, взявший заявку.
+  assignedUserId  String?              @map("assigned_user_id") @db.Uuid
+  status          ProgramInquiryStatus @default(NEW)
+  /// Журнал действий менеджера: JSON [{at, userId, action, note}].
+  activityLog     Json                 @default("[]") @map("activity_log")
+  /// Связанная заявка на рассрочку (если клиент решил брать в рассрочку).
+  installmentRequestId String?         @map("installment_request_id") @db.Uuid
+  convertedAt     DateTime?            @map("converted_at") @db.Timestamptz(6)
+  lostReason      String?              @map("lost_reason")
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  network        Network             @relation(fields: [networkId], references: [id], onDelete: Restrict)
+  program        Program             @relation(fields: [programId], references: [id], onDelete: Restrict)
+  client         User?               @relation("ProgramInquiryClient", fields: [clientUserId], references: [id], onDelete: SetNull)
+  assignee       User?               @relation("ProgramInquiryAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  installment    InstallmentRequest? @relation(fields: [installmentRequestId], references: [id], onDelete: SetNull)
+
+  @@index([networkId, status])
+  @@index([programId])
+  @@index([phone])
+  @@map("program_inquiries")
+}
+
+// =============================================================================
+// ORDERS / PAYMENTS (для цифрового контента и физтоваров)
+// =============================================================================
+
+/// Заказ — корзина, прошедшая чекаут. Для SERVICE/PROGRAM есть свои флоу
+/// (Appointment / ProgramInquiry), заказы используются для DIGITAL_CONTENT
+/// и PHYSICAL_GOOD.
+model Order {
+  id                 String      @id @default(uuid()) @db.Uuid
+  userId             String      @map("user_id") @db.Uuid
+  /// null если только цифровой контент (студия не при чём).
+  studioId           String?     @map("studio_id") @db.Uuid
+  orderNumber        String      @unique @map("order_number")
+  status             OrderStatus @default(PENDING)
+  currency           String      @default("RUB")
+  subtotalMinor      Int         @map("subtotal_minor")
+  discountMinor      Int         @default(0) @map("discount_minor")
+  appliedPromoCodeId String?     @map("applied_promo_code_id") @db.Uuid
+  shippingMinor      Int         @default(0) @map("shipping_minor")
+  totalMinor         Int         @map("total_minor")
+  /// Способ доставки (null для цифровых заказов).
+  deliveryMethod     DeliveryMethod?
+  shippingAddressId  String?     @map("shipping_address_id") @db.Uuid
+  /// Комментарий клиента при оформлении.
+  customerNote       String?     @map("customer_note")
+  paidAt             DateTime?   @map("paid_at") @db.Timestamptz(6)
+  cancelledAt        DateTime?   @map("cancelled_at") @db.Timestamptz(6)
+  cancelReason       String?     @map("cancel_reason")
+  createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  studio          Studio?          @relation(fields: [studioId], references: [id], onDelete: SetNull)
+  promoCode       PromoCode?       @relation(fields: [appliedPromoCodeId], references: [id], onDelete: SetNull)
+  items           OrderItem[]
+  payments        Payment[]
+  shipment        Shipment?
+  shippingAddress ShippingAddress? @relation(fields: [shippingAddressId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([studioId, status])
+  @@map("orders")
+}
+
+/// Позиция заказа. Полиморфна по типу продукта:
+///   PHYSICAL_GOOD → physicalGoodId
+///   DIGITAL_CONTENT → contentSeriesId
+model OrderItem {
+  id              String      @id @default(uuid()) @db.Uuid
+  orderId         String      @map("order_id") @db.Uuid
+  productType     ProductType @map("product_type")
+  physicalGoodId  String?     @map("physical_good_id") @db.Uuid
+  contentSeriesId String?     @map("content_series_id") @db.Uuid
+  /// Имя на момент заказа — чтобы не сломалось, если потом переименуют SKU.
+  nameSnapshot    String      @map("name_snapshot")
+  quantity        Int         @default(1)
+  unitPriceMinor  Int         @map("unit_price_minor")
+  totalMinor      Int         @map("total_minor")
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  order         Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  physicalGood  PhysicalGood? @relation(fields: [physicalGoodId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+/// Адрес доставки. Клиент может иметь несколько сохранённых адресов.
+model ShippingAddress {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  recipientName String @map("recipient_name")
+  phone       String
+  postalCode  String   @map("postal_code")
+  country     String   @default("RU")
+  region      String
+  city        String
+  street      String
+  building    String
+  apartment   String?
+  /// Для СДЭК ПВЗ: код пункта выдачи.
+  pvzCode     String?  @map("pvz_code")
+  note        String?
+  isDefault   Boolean  @default(false) @map("is_default")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  orders Order[]
+
+  @@index([userId])
+  @@map("shipping_addresses")
+}
+
+/// Отправка физических товаров.
+model Shipment {
+  id             String         @id @default(uuid()) @db.Uuid
+  orderId        String         @unique @map("order_id") @db.Uuid
+  method         DeliveryMethod
+  status         ShipmentStatus @default(NEW)
+  carrier        String?
+  trackingNumber String?        @map("tracking_number")
+  shippedAt      DateTime?      @map("shipped_at") @db.Timestamptz(6)
+  deliveredAt    DateTime?      @map("delivered_at") @db.Timestamptz(6)
+  /// История статусов от курьера: JSON [{at, status, note}].
+  statusHistory  Json           @default("[]") @map("status_history")
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([trackingNumber])
+  @@map("shipments")
+}
+
+/// Платёж — записывается для каждой попытки оплаты.
+/// Один заказ может иметь несколько Payment'ов (первая попытка — failed,
+/// вторая — succeeded).
+model Payment {
+  id                 String          @id @default(uuid()) @db.Uuid
+  orderId            String          @map("order_id") @db.Uuid
+  provider           PaymentProvider
+  method             PaymentMethod
+  status             PaymentStatus   @default(PENDING)
+  amountMinor        Int             @map("amount_minor")
+  currency           String          @default("RUB")
+  /// ID транзакции у провайдера (ЮКасса payment_id и т.п.).
+  providerTxId       String?         @unique @map("provider_tx_id")
+  /// Сырой payload от вебхука провайдера.
+  providerPayload    Json?           @map("provider_payload")
+  /// Ссылка для оплаты (redirect_url у ЮКассы).
+  confirmationUrl    String?         @map("confirmation_url")
+  idempotencyKey     String?         @unique @map("idempotency_key")
+  errorCode          String?         @map("error_code")
+  errorMessage       String?         @map("error_message")
+  refundedMinor      Int             @default(0) @map("refunded_minor")
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  completedAt        DateTime?       @map("completed_at") @db.Timestamptz(6)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, status])
+  @@index([status])
+  @@map("payments")
+}
+
+/// Заявка на рассрочку через банковского партнёра (Т-Рассрочка, Halva и т.п.).
+/// Используется для программ (и, возможно, крупных товарных заказов).
+model InstallmentRequest {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  userId               String                   @map("user_id") @db.Uuid
+  /// Что берём в рассрочку: программу (основной кейс) или заказ.
+  programId            String?                  @map("program_id") @db.Uuid
+  orderId              String?                  @map("order_id") @db.Uuid
+  provider             InstallmentProvider
+  status               InstallmentRequestStatus @default(SUBMITTED)
+  amountMinor          Int                      @map("amount_minor")
+  currency             String                   @default("RUB")
+  termMonths           Int                      @map("term_months")
+  monthlyPaymentMinor  Int?                     @map("monthly_payment_minor")
+  /// ID заявки у банка.
+  providerRequestId    String?                  @unique @map("provider_request_id")
+  providerPayload      Json?                    @map("provider_payload")
+  rejectionReason      String?                  @map("rejection_reason")
+  approvedAt           DateTime?                @map("approved_at") @db.Timestamptz(6)
+  activatedAt          DateTime?                @map("activated_at") @db.Timestamptz(6)
+  completedAt          DateTime?                @map("completed_at") @db.Timestamptz(6)
+  createdAt            DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user             User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  program          Program?         @relation(fields: [programId], references: [id], onDelete: SetNull)
+  programInquiries ProgramInquiry[]
+
+  @@index([userId, status])
+  @@index([providerRequestId])
+  @@map("installment_requests")
+}
+
+// =============================================================================
+// FUNNEL EVENTS (аналитика пути клиента)
+// =============================================================================
+
+/// События прогрева. Лёгкая append-only таблица для быстрых выборок.
+/// Тяжёлая аналитика (когорты, ретеншн) — отдельный BI-пайплайн.
+model FunnelEvent {
+  id          String          @id @default(uuid()) @db.Uuid
+  userId      String?         @map("user_id") @db.Uuid
+  /// Для анонимных пользователей до регистрации.
+  anonymousSessionId String?  @map("anonymous_session_id")
+  type        FunnelEventType
+  /// Произвольный контекст: JSON { contentItemId?, ctaId?, programId?, ... }.
+  metadata    Json            @default("{}")
+  /// Источник события: "mobile", "tablet", "admin_web".
+  source      String?
+  occurredAt  DateTime        @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, occurredAt])
+  @@index([type, occurredAt])
+  @@index([anonymousSessionId])
+  @@map("funnel_events")
+}
+
+// =============================================================================
+// ПРОМОКОДЫ
+// =============================================================================
+
+model PromoCode {
+  id                 String         @id @default(uuid()) @db.Uuid
+  /// null = действует во всей сети, studioId = только в одной студии.
+  studioId           String?        @map("studio_id") @db.Uuid
+  code               String         @unique
+  type               PromoCodeType
+  scope              PromoCodeScope
+  /// Для PERCENT: 5 = 5%. Для FIXED: сумма в минимальных единицах.
+  value              Int
+  currency           String         @default("RUB")
+  description        String?
+  serviceIds         String[]       @default([]) @map("service_ids") @db.Uuid
+  physicalGoodIds    String[]       @default([]) @map("physical_good_ids") @db.Uuid
+  contentSeriesIds   String[]       @default([]) @map("content_series_ids") @db.Uuid
+  programIds         String[]       @default([]) @map("program_ids") @db.Uuid
+  minOrderMinor      Int?           @map("min_order_minor")
+  maxUsesTotal       Int?           @map("max_uses_total")
+  maxUsesPerUser     Int            @default(1) @map("max_uses_per_user")
+  usesCount          Int            @default(0) @map("uses_count")
+  validFrom          DateTime       @map("valid_from") @db.Timestamptz(6)
+  validUntil         DateTime       @map("valid_until") @db.Timestamptz(6)
+  autoIssueTrigger   String?        @map("auto_issue_trigger")
+  isActive           Boolean        @default(true) @map("is_active")
+  createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  studio        Studio?        @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  services      Service[]      @relation("PromoCodeService")
+  physicalGoods PhysicalGood[] @relation("PromoCodePhysicalGood")
+  programs      Program[]      @relation("PromoCodeProgram")
+  appointments  Appointment[]
+  orders        Order[]
+
+  @@index([code, isActive])
+  @@index([studioId])
+  @@map("promo_codes")
+}
+
+// =============================================================================
+// УВЕДОМЛЕНИЯ (PodoCare — единственный источник коммуникации с клиентом:
+// собственные SMS, push и email. iKlients не используется.)
+// =============================================================================
+
+/// Шаблон сообщения. Один ключ → несколько каналов/языков. Редактируется в
+/// админке без деплоя. Переменные в теле — mustache {{var.path}}; поле
+/// variables документирует доступные.
+model NotificationTemplate {
+  id         String                  @id @default(uuid()) @db.Uuid
+  networkId  String                  @map("network_id") @db.Uuid
+  key        NotificationTemplateKey
+  channel    NotificationChannel
+  locale     String                  @default("ru")
+  /// Для EMAIL: тема письма. Для SMS/PUSH/IN_APP — короткий title (не всегда используется).
+  subject    String?
+  /// Текст с mustache-плейсхолдерами: "Здравствуйте, {{client.firstName}}!..."
+  body       String
+  /// Публикуемый список переменных для подсказки редактору: ["client.firstName","appointment.startsAt","studio.address"].
+  variables  String[]                @default([])
+  /// SMS-специфичное: Sender ID (имя отправителя) или номер.
+  senderId   String?                 @map("sender_id")
+  isActive   Boolean                 @default(true) @map("is_active")
+  createdAt  DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  network Network @relation(fields: [networkId], references: [id], onDelete: Cascade)
+
+  @@unique([networkId, key, channel, locale])
+  @@index([networkId, isActive])
+  @@map("notification_templates")
+}
+
+/// Политика напоминаний: для каких событий, за сколько минут и по каким каналам
+/// слать автоматические сообщения. Настраивается в админке.
+/// Пример: "за 24 ч до visit — SMS", "за 1 ч — PUSH", "за 15 мин — PUSH".
+model ReminderPolicy {
+  id                   String                  @id @default(uuid()) @db.Uuid
+  networkId            String                  @map("network_id") @db.Uuid
+  /// Ключ шаблона — совпадает с NotificationTemplate.key.
+  templateKey          NotificationTemplateKey @map("template_key")
+  channel              NotificationChannel
+  /// За сколько минут до события слать (для напоминаний).
+  offsetMinutesBefore  Int                     @map("offset_minutes_before")
+  /// Условия применения: JSON { serviceIds?, studioIds?, clientSegment? }.
+  conditions           Json?
+  isActive             Boolean                 @default(true) @map("is_active")
+  createdAt            DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  network Network @relation(fields: [networkId], references: [id], onDelete: Cascade)
+
+  @@unique([networkId, templateKey, channel, offsetMinutesBefore])
+  @@index([networkId, isActive])
+  @@map("reminder_policies")
+}
+
+/// Push-токен конкретного устройства. У пользователя может быть несколько устройств
+/// (телефон + планшет + старый телефон). Заменяет User.pushToken на нормальную связь.
+model PushDevice {
+  id         String       @id @default(uuid()) @db.Uuid
+  userId     String       @map("user_id") @db.Uuid
+  provider   PushProvider
+  /// Expo push token / FCM token / APNs device token.
+  token      String
+  /// "mobile_ios" | "mobile_android" | "tablet_ios" | ...
+  deviceType String       @map("device_type")
+  deviceName String?      @map("device_name")
+  isActive   Boolean      @default(true) @map("is_active")
+  lastSeenAt DateTime     @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, token])
+  @@index([userId, isActive])
+  @@map("push_devices")
+}
+
+/// Отправленное уведомление. Создаётся воркером BullMQ после попытки отправки.
+/// Для отложенных напоминаний используем delayed jobs в BullMQ, в БД
+/// запись появляется уже на момент отправки (а не на момент планирования).
+model Notification {
+  id                String              @id @default(uuid()) @db.Uuid
+  userId            String              @map("user_id") @db.Uuid
+  type              NotificationType
+  /// Ключ шаблона (null для ad-hoc уведомлений).
+  templateKey       NotificationTemplateKey? @map("template_key")
+  channel           NotificationChannel
+  status            NotificationStatus  @default(QUEUED)
+  title             String
+  body              String
+  /// Куда отправили: номер телефона / email / push token (snapshot, чтобы не терять контекст).
+  recipient         String
+  /// Произвольные данные (для deep-link в push-уведомлениях и т.п.).
+  payload           Json?
+  /// Сущность, ради которой шлём (для логирования и возможности retry):
+  /// entityType = "appointment" | "order" | "program_inquiry" | "content" | ...
+  entityType        String?             @map("entity_type")
+  entityId          String?             @map("entity_id")
+  /// Запись об использованном провайдере.
+  smsProvider       SmsProvider?        @map("sms_provider")
+  pushProvider      PushProvider?       @map("push_provider")
+  emailProvider     EmailProvider?      @map("email_provider")
+  /// ID сообщения у провайдера (для webhook-callback и проверки доставки).
+  providerMessageId String?             @map("provider_message_id")
+  /// Сырой ответ провайдера (для отладки).
+  providerPayload   Json?               @map("provider_payload")
+  /// Стоимость отправки (для SMS — копейки за 1 сообщение × сегменты).
+  costMinor         Int?                @map("cost_minor")
+  sentAt            DateTime?           @map("sent_at") @db.Timestamptz(6)
+  deliveredAt       DateTime?           @map("delivered_at") @db.Timestamptz(6)
+  readAt            DateTime?           @map("read_at") @db.Timestamptz(6)
+  failedAt          DateTime?           @map("failed_at") @db.Timestamptz(6)
+  failureReason     String?             @map("failure_reason")
+  /// Идемпотентность: если мы ставим в очередь дважды (например, из-за
+  /// ретрая worker'а), пропускаем дубликат.
+  idempotencyKey    String?             @unique @map("idempotency_key")
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([type, createdAt])
+  @@index([entityType, entityId])
+  @@map("notifications")
+}
+
+/// Подписка пользователя на маркетинговые уведомления (opt-out).
+/// Технические (записи, чеки, статусы заказов) шлём всегда — они не подпадают.
+model NotificationPreference {
+  id                       String   @id @default(uuid()) @db.Uuid
+  userId                   String   @unique @map("user_id") @db.Uuid
+  marketingSmsEnabled      Boolean  @default(true) @map("marketing_sms_enabled")
+  marketingPushEnabled     Boolean  @default(true) @map("marketing_push_enabled")
+  marketingEmailEnabled    Boolean  @default(true) @map("marketing_email_enabled")
+  newContentPushEnabled    Boolean  @default(true) @map("new_content_push_enabled")
+  reminderSmsEnabled       Boolean  @default(true) @map("reminder_sms_enabled")
+  reminderPushEnabled      Boolean  @default(true) @map("reminder_push_enabled")
+  quietHoursStart          String?  @map("quiet_hours_start")
+  quietHoursEnd            String?  @map("quiet_hours_end")
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+// =============================================================================
+// FAQ И ПОДДЕРЖКА
+// =============================================================================
+
+model FaqItem {
+  id        String      @id @default(uuid()) @db.Uuid
+  category  FaqCategory
+  question  String
+  answer    String
+  sortOrder Int         @default(0) @map("sort_order")
+  isActive  Boolean     @default(true) @map("is_active")
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([category, isActive])
+  @@map("faq_items")
+}
+
+model SupportTicket {
+  id             String              @id @default(uuid()) @db.Uuid
+  userId         String              @map("user_id") @db.Uuid
+  studioId       String?             @map("studio_id") @db.Uuid
+  subject        String
+  status         SupportTicketStatus @default(OPEN)
+  assignedUserId String?             @map("assigned_user_id") @db.Uuid
+  closedAt       DateTime?           @map("closed_at") @db.Timestamptz(6)
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user     User             @relation("SupportTicketUser", fields: [userId], references: [id], onDelete: Cascade)
+  studio   Studio?          @relation(fields: [studioId], references: [id], onDelete: SetNull)
+  messages SupportMessage[]
+
+  @@index([userId, status])
+  @@map("support_tickets")
+}
+
+model SupportMessage {
+  id             String   @id @default(uuid()) @db.Uuid
+  ticketId       String   @map("ticket_id") @db.Uuid
+  senderId       String   @map("sender_id") @db.Uuid
+  body           String
+  attachmentUrls String[] @default([]) @map("attachment_urls")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  sender User          @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@map("support_messages")
+}
+
+/// Опрос клиента после процедуры / через N дней.
+model FeedbackSurvey {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  studioId      String   @map("studio_id") @db.Uuid
+  appointmentId String?  @map("appointment_id") @db.Uuid
+  ratings       Json
+  comment       String?
+  allowPublish  Boolean  @default(false) @map("allow_publish")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studio Studio @relation(fields: [studioId], references: [id], onDelete: Cascade)
+
+  @@index([studioId, createdAt])
+  @@map("feedback_surveys")
+}
+
+// =============================================================================
+// АУДИТ
+// =============================================================================
+
+model AuditLog {
+  id         String      @id @default(uuid()) @db.Uuid
+  userId     String?     @map("user_id") @db.Uuid
+  action     AuditAction
+  entityType String      @map("entity_type")
+  entityId   String?     @map("entity_id")
+  details    Json?
+  ipAddress  String?     @map("ip_address")
+  userAgent  String?     @map("user_agent")
+  createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}

@@ -1,0 +1,15 @@
+---
+description: Веб-админка PodoCare — стек, расположение в монорепо, интеграция с API
+globs: apps/admin/**/*
+alwaysApply: false
+---
+
+# Админ-панель (`apps/admin`)
+
+- Стек: **React + TypeScript + Vite**. Новые экраны и фичи админки добавлять сюда, не переносить в `apps/mobile`, если это не явное ТЗ на единый клиент.
+- Базовый URL API: **`VITE_API_URL`** (как у мобильного клиента, с префиксом версии, например `http://localhost:3000/api/v1`).
+- Вход персонала: **`POST …/auth/staff/login`** (`deviceType`, например `admin_web`). После входа — пары **`accessToken` / `refreshToken`**, при 401 — **`POST …/auth/refresh`**. Выход — **`POST …/auth/logout`** с refresh-токеном.
+- Защищённые операции каталога и контента: префиксы **`/admin/catalog`**, **`/admin/education`** и др.; заголовок **`Authorization: Bearer <access>`**.
+- Перечисления и типы по возможности из **`@podocare/shared-types`**.
+- Локально API и админку часто поднимают так: **`pnpm dev:stack:admin`**; первый SUPER_ADMIN для проверки: **`pnpm bootstrap:dev-admin`** (см. `apps/api/scripts/create-dev-admin.ts`, переменные `DEV_ADMIN_*`).
+- Подробности решения: **`docs/adr/0001-admin-spa-react-vite.md`**.
