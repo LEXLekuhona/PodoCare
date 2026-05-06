@@ -1,0 +1,61 @@
+name: PR Checklist Gate
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+    branches: [main, develop]
+
+jobs:
+  validate-pr-checklist:
+    name: Validate PR checklist
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate required PR sections and checklist
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if [ -z "${PR_BODY}" ]; then
+            echo "::error::PR body is empty. Fill the PR template."
+            exit 1
+          fi
+
+          required_tokens=(
+            "## Summary"
+            "## Sprint / Priority"
+            "## Release Checklist"
+            "### Core stability"
+            "### DB and contracts"
+            "### Queues and jobs"
+            "### Observability and docs"
+            "## Test Plan"
+            "docs/release-checklist.md"
+          )
+
+          for token in "${required_tokens[@]}"; do
+            if ! printf '%s\n' "${PR_BODY}" | rg -F --quiet "${token}"; then
+              echo "::error::Missing required PR template section/token: ${token}"
+              exit 1
+            fi
+          done
+
+          if ! printf '%s\n' "${PR_BODY}" | rg --quiet --pcre2 '^- \[[xX]\] P(0|1(\.5)?|2|3)'; then
+            echo "::error::Pick at least one Sprint/Priority checkbox in PR body."
+            exit 1
+          fi
+
+          required_checked_items=(
+            '^- \[[xX]\] `pnpm --filter @podocare/api test:e2e:core -- --ci` is green'
+            "^- \\[[xX]\\] Prisma migrations included and validated"
+            "^- \\[[xX]\\] `GET /api/v1/health/queues` validated"
+            "^- \\[[xX]\\] Alerts/runbook updated if needed"
+          )
+
+          for item in "${required_checked_items[@]}"; do
+            if ! printf '%s\n' "${PR_BODY}" | rg --quiet --pcre2 "${item}"; then
+              echo "::error::Missing required checked Release Checklist item matching regex: ${item}"
+              exit 1
+            fi
+          done
+
+          echo "PR checklist validation passed."
