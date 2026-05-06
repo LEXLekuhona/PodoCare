@@ -97,7 +97,7 @@ export function ServiceSelectionPage() {
 
   return (
     <View style={styles.root} lightColor="#FFFFFF" darkColor="#06130E">
-      <AppHeader title="PodoCare" onBackPress={() => router.back()} />
+      <AppHeader title="Solodova Recovery System" onBackPress={() => router.back()} />
 
       <ScrollView
         style={styles.scroll}

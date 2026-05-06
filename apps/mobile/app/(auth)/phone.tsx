@@ -2,11 +2,13 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
   TextInput,
+  TouchableWithoutFeedback,
   View as RNView,
 } from 'react-native';
 
@@ -49,8 +51,9 @@ export default function LoginPhoneScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
     >
-      <View style={styles.screen}>
-        <RNView style={styles.decorBlob} pointerEvents="none" />
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <View style={styles.screen}>
+          <RNView style={styles.decorBlob} pointerEvents="none" />
 
         <SafeAreaPadding minTop={10} minBottom={0} style={styles.topNav} lightColor="transparent" darkColor="transparent">
           <Pressable
@@ -114,6 +117,14 @@ export default function LoginPhoneScreen() {
           <View style={styles.flex} />
 
           <SafeAreaPadding minTop={0} minBottom={16} style={styles.bottom} lightColor="transparent" darkColor="transparent">
+            <Pressable
+              onPress={() => router.push('/(auth)/quiz')}
+              style={({ pressed }) => [styles.quizEntry, pressed && styles.pressed]}
+            >
+              <Text style={styles.quizEntryText} lightColor="#2D6A4F" darkColor="#95D4B3">
+                Пройти диагностический квиз без регистрации
+              </Text>
+            </Pressable>
             {sendError ? (
               <Text style={styles.formError} lightColor="#BA1A1A" darkColor="#FFB4A9">
                 {sendError}
@@ -171,7 +182,8 @@ export default function LoginPhoneScreen() {
             </Pressable>
           </SafeAreaPadding>
         </View>
-      </View>
+        </View>
+      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 }
@@ -277,6 +289,18 @@ const styles = StyleSheet.create({
   bottom: {
     gap: 12,
     marginTop: 48,
+  },
+  quizEntry: {
+    alignSelf: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+  },
+  quizEntryText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+    textAlign: 'center',
   },
   formError: {
     fontSize: 13,

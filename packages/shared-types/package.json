@@ -1,5 +1,5 @@
 {
-  "name": "@podocare/shared-types",
+  "name": "@srs/shared-types",
   "version": "0.1.0",
   "private": true,
   "description": "Общие типы, enum'ы и API-контракты. Часть генерируется из OpenAPI схемы бэкенда.",
@@ -20,7 +20,7 @@
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "devDependencies": {
-    "@podocare/tsconfig": "workspace:*",
+    "@srs/tsconfig": "workspace:*",
     "typescript": "^5.7.3"
   }
 }

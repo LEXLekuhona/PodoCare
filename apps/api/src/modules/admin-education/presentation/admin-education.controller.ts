@@ -12,7 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@podocare/shared-types';
+import { UserRole } from '@srs/shared-types';
 
 import { CurrentUser } from '../../auth/infrastructure/current-user.decorator';
 import { JwtAuthGuard } from '../../auth/infrastructure/jwt-auth.guard';

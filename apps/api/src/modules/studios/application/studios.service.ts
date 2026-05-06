@@ -16,6 +16,7 @@ export class StudiosService {
     }
 
     let filterByServiceId: string | undefined;
+    let filterByServiceCategoryId: string | null | undefined;
     const raw = serviceId?.trim();
     if (raw) {
       if (!UUID_QUERY_RE.test(raw)) {
@@ -23,19 +24,29 @@ export class StudiosService {
       }
       const svc = await this.prisma.service.findFirst({
         where: { id: raw, studioId, isActive: true },
-        select: { id: true },
+        select: { id: true, categoryId: true },
       });
       if (!svc) {
         throw new BadRequestException('Услуга не найдена в этой студии');
       }
       filterByServiceId = svc.id;
+      filterByServiceCategoryId = svc.categoryId;
     }
 
     const rows = await this.prisma.specialistProfile.findMany({
       where: {
         isAcceptingNew: true,
         studios: { some: { studioId } },
-        ...(filterByServiceId ? { services: { some: { serviceId: filterByServiceId } } } : {}),
+        ...(filterByServiceId
+          ? {
+              OR: [
+                { services: { some: { serviceId: filterByServiceId } } },
+                ...(filterByServiceCategoryId
+                  ? [{ categories: { some: { categoryId: filterByServiceCategoryId } } }]
+                  : []),
+              ],
+            }
+          : {}),
       },
       orderBy: { createdAt: 'asc' },
       select: {
@@ -71,6 +82,97 @@ export class StudiosService {
     });
   }
 
+  async listProducts(studioId: string) {
+    const studio = await this.prisma.studio.findUnique({
+      where: { id: studioId },
+      select: { id: true, networkId: true },
+    });
+    if (!studio) {
+      throw new NotFoundException('Студия не найдена');
+    }
+    const rows = await this.prisma.physicalGood.findMany({
+      where: { networkId: studio.networkId, isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        description: true,
+        brand: true,
+        category: { select: { name: true } },
+        imageUrls: true,
+        priceMinor: true,
+        currency: true,
+      },
+    });
+    return rows.map((row) => ({
+      ...row,
+      category: row.category.name,
+    }));
+  }
+
+  async listHealthConcerns() {
+    return this.prisma.healthConcern.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        description: true,
+        iconUrl: true,
+      },
+    });
+  }
+
+  async getHealthConcernBySlug(slug: string) {
+    const row = await this.prisma.healthConcern.findFirst({
+      where: { slug, isActive: true },
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        description: true,
+        iconUrl: true,
+      },
+    });
+    if (!row) {
+      throw new NotFoundException('Жалоба не найдена');
+    }
+    return row;
+  }
+
+  async listStudioDirections() {
+    return this.prisma.studioDirection.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        description: true,
+        iconKey: true,
+      },
+    });
+  }
+
+  async getStudioDirectionBySlug(slug: string) {
+    const row = await this.prisma.studioDirection.findFirst({
+      where: { slug, isActive: true },
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        description: true,
+        iconKey: true,
+      },
+    });
+    if (!row) {
+      throw new NotFoundException('Направление не найдено');
+    }
+    return row;
+  }
+
   /** Услуги, которые указанный специалист выполняет в этой студии. */
   async listSpecialistServices(studioId: string, specialistId: string) {
     const studio = await this.prisma.studio.findUnique({ where: { id: studioId }, select: { id: true } });
@@ -88,11 +190,28 @@ export class StudiosService {
     if (!specialist) {
       throw new NotFoundException('Специалист не найден в указанной студии');
     }
+    const specialistCapabilities = await this.prisma.specialistProfile.findUnique({
+      where: { id: specialistId },
+      select: {
+        services: { select: { serviceId: true } },
+        categories: { select: { categoryId: true } },
+      },
+    });
+
+    const serviceIds = specialistCapabilities?.services.map((x) => x.serviceId) ?? [];
+    const categoryIds = specialistCapabilities?.categories.map((x) => x.categoryId) ?? [];
+    if (serviceIds.length === 0 && categoryIds.length === 0) {
+      return [];
+    }
+
     return this.prisma.service.findMany({
       where: {
         studioId,
         isActive: true,
-        specialists: { some: { specialistId } },
+        OR: [
+          ...(serviceIds.length > 0 ? [{ id: { in: serviceIds } }] : []),
+          ...(categoryIds.length > 0 ? [{ categoryId: { in: categoryIds } }] : []),
+        ],
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       select: {

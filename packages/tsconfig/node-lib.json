@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "display": "PodoCare Node Library",
+  "display": "Solodova Recovery System Node Library",
   "extends": "./base.json",
   "compilerOptions": {
     "module": "CommonJS",

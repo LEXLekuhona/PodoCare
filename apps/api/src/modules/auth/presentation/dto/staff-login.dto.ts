@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class StaffLoginDto {
-  @ApiProperty({ example: 'admin@podocare.local' })
+  @ApiProperty({ example: 'admin@solodova-recovery.local' })
   @IsEmail()
   @MaxLength(254)
   email!: string;

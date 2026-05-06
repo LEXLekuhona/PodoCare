@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "display": "PodoCare NestJS",
+  "display": "Solodova Recovery System NestJS",
   "extends": "./base.json",
   "compilerOptions": {
     "module": "CommonJS",

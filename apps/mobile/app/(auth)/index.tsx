@@ -28,7 +28,7 @@ export default function SplashScreen() {
 
       <View style={styles.textBlock} lightColor="transparent" darkColor="transparent">
         <Text style={styles.title} lightColor="#FFFFFF" darkColor="#FFFFFF">
-          PodoCare
+          Solodova Recovery System
         </Text>
         <Text style={styles.subtitle} lightColor="#95D4B3" darkColor="#95D4B3">
           ЗАБОТА О ВАШЕМ ЗДОРОВЬЕ

@@ -1,11 +1,15 @@
 
-import { UserRole } from '@podocare/shared-types';
-import { useCallback, useEffect, useState } from 'react';
+import { UserRole } from '@srs/shared-types';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { ApiError, apiRequest } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { DEFAULT_OPENING_HOURS_JSON } from '../../lib/default-opening-hours';
 import { canMutateTenantCatalog } from '../../lib/roles';
+import { FilterBar } from '../../ui/FilterBar';
+import { useToast } from '../../ui/ToastContext';
 
 import type { NetworkRow } from './network-types';
 import type { FormEvent } from 'react';
@@ -52,7 +56,9 @@ function parseOpeningHours(raw: string): Record<string, unknown> {
 
 export function StudiosPage() {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const canMutate = user ? canMutateTenantCatalog(user.role) : false;
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [networks, setNetworks] = useState<NetworkRow[]>([]);
   const [rows, setRows] = useState<StudioRow[]>([]);
@@ -64,6 +70,8 @@ export function StudiosPage() {
     form: StudioFormState;
   } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') ?? '');
+  const debouncedQuery = useDebouncedValue(searchQuery);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -172,8 +180,10 @@ export function StudiosPage() {
       }
       setModal(null);
       await reload();
+      showToast(modal.mode === 'create' ? 'Студия создана' : 'Студия обновлена', 'success');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Ошибка сохранения');
+      showToast('Не удалось сохранить студию', 'error');
     } finally {
       setSaving(false);
     }
@@ -186,36 +196,77 @@ export function StudiosPage() {
     try {
       await apiRequest(`/admin/catalog/studios/${id}`, { method: 'DELETE' });
       await reload();
+      showToast('Студия удалена', 'success');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Ошибка удаления');
+      showToast('Не удалось удалить студию', 'error');
     }
   }
 
   const netName = (id: string) => networks.find((n) => n.id === id)?.name ?? id.slice(0, 8);
+  const filteredRows = useMemo(() => {
+    const q = debouncedQuery.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => {
+      const networkLabel = networks.find((n) => n.id === r.networkId)?.name ?? r.networkId;
+      return (
+        r.name.toLowerCase().includes(q) ||
+        r.city.toLowerCase().includes(q) ||
+        r.address.toLowerCase().includes(q) ||
+        networkLabel.toLowerCase().includes(q)
+      );
+    });
+  }, [rows, debouncedQuery, networks]);
+
+  useEffect(() => {
+    const next = new URLSearchParams();
+    const q = searchQuery.trim();
+    if (q) next.set('q', q);
+    setSearchParams(next, { replace: true });
+  }, [searchQuery, setSearchParams]);
 
   return (
-    <div>
-      <div className="toolbar">
-        <h1 style={{ margin: 0, flex: 1 }}>Студии</h1>
-        {canMutate ? (
-          <button type="button" className="primary" onClick={() => openCreate()} disabled={networks.length === 0}>
-            Новая студия
-          </button>
-        ) : null}
+    <div className="page-shell">
+      <div className="page-header">
+        <div className="toolbar" style={{ marginBottom: 0 }}>
+          <h1 className="page-title" style={{ flex: 1 }}>
+            Студии
+          </h1>
+          {canMutate ? (
+            <button type="button" className="primary" onClick={() => openCreate()} disabled={networks.length === 0}>
+              Новая студия
+            </button>
+          ) : null}
+        </div>
+        <p className="page-subtitle">
+          Филиалы сети, которые видны клиенту при выборе локации и используются для расписаний специалистов.
+        </p>
       </div>
 
       {networks.length === 0 && !loading ? (
-        <p style={{ color: 'var(--muted)' }}>
-          Сначала создайте хотя бы одну сеть на странице «Сети».
-        </p>
+        <div className="surface-card">
+          <p style={{ color: 'var(--muted)', margin: 0 }}>
+            Сначала создайте хотя бы одну сеть на странице «Сети».
+          </p>
+        </div>
       ) : null}
 
       {error ? <div className="error-banner">{error}</div> : null}
 
+      <FilterBar
+        query={searchQuery}
+        onQueryChange={setSearchQuery}
+        onReset={() => setSearchQuery('')}
+        resetDisabled={searchQuery.trim() === ''}
+        foundCount={filteredRows.length}
+        totalCount={rows.length}
+        placeholder="Название, город, адрес или сеть"
+      />
+
       {loading ? (
         <p style={{ color: 'var(--muted)' }}>Загрузка…</p>
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap sticky-head">
           <table>
             <thead>
               <tr>
@@ -227,26 +278,39 @@ export function StudiosPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.name}</td>
-                  <td>{netName(r.networkId)}</td>
-                  <td>{r.city}</td>
-                  <td>{r.isActive ? 'да' : 'нет'}</td>
-                  {canMutate || user?.role === UserRole.StudioAdmin ? (
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      <button type="button" onClick={() => openEdit(r)}>
-                        Изменить
-                      </button>{' '}
-                      {canMutate ? (
-                        <button type="button" className="danger" onClick={() => void remove(r.id, r.name)}>
-                          Удалить
-                        </button>
-                      ) : null}
-                    </td>
-                  ) : null}
+              {filteredRows.length > 0 ? (
+                filteredRows.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.name}</td>
+                    <td>{netName(r.networkId)}</td>
+                    <td>{r.city}</td>
+                    <td>{r.isActive ? 'да' : 'нет'}</td>
+                    {canMutate || user?.role === UserRole.StudioAdmin ? (
+                      <td>
+                        <span className="inline-actions">
+                          <button type="button" onClick={() => openEdit(r)}>
+                            Изменить
+                          </button>
+                          {canMutate ? (
+                            <button type="button" className="danger" onClick={() => void remove(r.id, r.name)}>
+                              Удалить
+                            </button>
+                          ) : null}
+                        </span>
+                      </td>
+                    ) : null}
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td
+                    colSpan={canMutate || user?.role === UserRole.StudioAdmin ? 5 : 4}
+                    style={{ color: 'var(--muted)' }}
+                  >
+                    Ничего не найдено. Попробуйте изменить запрос.
+                  </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>

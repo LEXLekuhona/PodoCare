@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
-import { AppointmentStatus } from '@podocare/shared-types';
+import { AppointmentStatus } from '@srs/shared-types';
 
 import { PrismaService } from '../../../../infrastructure/prisma/prisma.service';
 import {

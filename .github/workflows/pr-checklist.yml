@@ -45,7 +45,7 @@ jobs:
           fi
 
           required_checked_items=(
-            '^- \[[xX]\] `pnpm --filter @podocare/api test:e2e:core -- --ci` is green'
+            '^- \[[xX]\] `pnpm --filter @srs/api test:e2e:core -- --ci` is green'
             "^- \\[[xX]\\] Prisma migrations included and validated"
             "^- \\[[xX]\\] `GET /api/v1/health/queues` validated"
             "^- \\[[xX]\\] Alerts/runbook updated if needed"

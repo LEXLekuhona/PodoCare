@@ -1,4 +1,4 @@
-const base = require('@podocare/eslint-config');
+const base = require('@srs/eslint-config');
 const globals = require('globals');
 
 module.exports = [

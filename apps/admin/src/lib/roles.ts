@@ -1,4 +1,4 @@
-import { UserRole } from '@podocare/shared-types';
+import { UserRole } from '@srs/shared-types';
 
 /** CRUD сетей / студий / глобальных справочников в админ-каталоге. */
 export function canMutateTenantCatalog(role: UserRole): boolean {

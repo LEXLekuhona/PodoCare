@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -54,5 +54,13 @@ export class CryptoService {
 
   hashSha256(input: string): string {
     return createHash('sha256').update(input).digest('hex');
+  }
+  
+  /** Сравнение хешей без timing-атаки. Используй вместо === для OTP и токенов. */
+  timingSafeCompare(a: string, b: string): boolean {
+    const ba = Buffer.from(a, 'hex');
+    const bb = Buffer.from(b, 'hex');
+    if (ba.length !== bb.length) return false;
+    return timingSafeEqual(ba, bb);
   }
 }

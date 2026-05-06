@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { ensureSessionReady } from '@/features/auth/session-store';
+import { syncPushDeviceWithServer } from '@/features/push/sync-push-device';
 
 export default function AppLayout() {
   const router = useRouter();
@@ -23,6 +24,11 @@ export default function AppLayout() {
     if (gate !== 'no') return;
     router.replace('/(auth)/phone');
   }, [gate, router]);
+
+  useEffect(() => {
+    if (gate !== 'ok') return;
+    void syncPushDeviceWithServer();
+  }, [gate]);
 
   if (gate !== 'ok') {
     return (
@@ -48,10 +54,15 @@ export default function AppLayout() {
       <Stack.Screen name="booking-confirm" options={{ headerShown: false }} />
       <Stack.Screen name="booking-created" options={{ headerShown: false }} />
       <Stack.Screen name="service-selection" options={{ headerShown: false }} />
+      <Stack.Screen name="health-concern/[slug]" options={{ headerShown: false }} />
+      <Stack.Screen name="studio-direction/[slug]" options={{ headerShown: false }} />
       <Stack.Screen name="feedback" options={{ headerShown: false }} />
+      <Stack.Screen name="faq" options={{ headerShown: false }} />
       <Stack.Screen name="consents" options={{ headerShown: false }} />
       <Stack.Screen name="consent-document" options={{ headerShown: false }} />
       <Stack.Screen name="profile-edit" options={{ headerShown: false }} />
+      <Stack.Screen name="medical-card" options={{ headerShown: false }} />
+      <Stack.Screen name="medical-card/visit/[id]" options={{ headerShown: false }} />
     </Stack>
   );
 }

@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 
 import { ApiError, apiRequest } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { slugify } from '../../lib/identifiers';
 import { canMutateTenantCatalog } from '../../lib/roles';
+import { FilterBar } from '../../ui/FilterBar';
+import { useToast } from '../../ui/ToastContext';
 
 import type { FormEvent } from 'react';
 
@@ -12,7 +17,6 @@ interface Row {
   slug: string;
   title: string;
   description: string | null;
-  iconUrl: string | null;
   sortOrder: number;
   isActive: boolean;
 }
@@ -21,8 +25,6 @@ interface FormState {
   slug: string;
   title: string;
   description: string;
-  iconUrl: string;
-  sortOrder: string;
   isActive: boolean;
 }
 
@@ -30,14 +32,19 @@ const empty: FormState = {
   slug: '',
   title: '',
   description: '',
-  iconUrl: '',
-  sortOrder: '0',
   isActive: true,
 };
 
+function nextSortOrder(items: Array<{ sortOrder: number }>): number {
+  const maxSortOrder = items.reduce((max, item) => Math.max(max, item.sortOrder), -10);
+  return maxSortOrder + 10;
+}
+
 export function HealthConcernsPage() {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const canMutate = user ? canMutateTenantCatalog(user.role) : false;
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +53,9 @@ export function HealthConcernsPage() {
     null,
   );
   const [saving, setSaving] = useState(false);
+  const [slugEditedManually, setSlugEditedManually] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') ?? '');
+  const debouncedQuery = useDebouncedValue(searchQuery);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -70,13 +80,11 @@ export function HealthConcernsPage() {
     setSaving(true);
     setError(null);
     try {
-      const sortOrder = Number(modal.form.sortOrder);
       const payload = {
         slug: modal.form.slug.trim(),
         title: modal.form.title.trim(),
         description: modal.form.description.trim() || undefined,
-        iconUrl: modal.form.iconUrl.trim() || undefined,
-        sortOrder: Number.isFinite(sortOrder) ? sortOrder : 0,
+        ...(modal.mode === 'create' ? { sortOrder: nextSortOrder(rows) } : {}),
         isActive: modal.form.isActive,
       };
       if (modal.mode === 'create') {
@@ -94,8 +102,10 @@ export function HealthConcernsPage() {
       }
       setModal(null);
       await reload();
+      showToast(modal.mode === 'create' ? 'Карточка создана' : 'Карточка обновлена', 'success');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Ошибка сохранения');
+      showToast('Не удалось сохранить карточку', 'error');
     } finally {
       setSaving(false);
     }
@@ -107,28 +117,74 @@ export function HealthConcernsPage() {
     try {
       await apiRequest(`/admin/catalog/health-concerns/${id}`, { method: 'DELETE' });
       await reload();
+      showToast('Карточка удалена', 'success');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Ошибка удаления');
+      showToast('Не удалось удалить карточку', 'error');
     }
   }
 
+  const filteredRows = useMemo(() => {
+    const q = debouncedQuery.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => {
+      return (
+        r.title.toLowerCase().includes(q) ||
+        r.slug.toLowerCase().includes(q) ||
+        (r.description ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [rows, debouncedQuery]);
+
+  useEffect(() => {
+    const next = new URLSearchParams();
+    const q = searchQuery.trim();
+    if (q) next.set('q', q);
+    setSearchParams(next, { replace: true });
+  }, [searchQuery, setSearchParams]);
+
   return (
-    <div>
-      <div className="toolbar">
-        <h1 style={{ margin: 0, flex: 1 }}>Жалобы (что беспокоит)</h1>
-        {canMutate ? (
-          <button type="button" className="primary" onClick={() => setModal({ mode: 'create', form: empty })}>
-            Новая запись
-          </button>
-        ) : null}
+    <div className="page-shell">
+      <div className="page-header">
+        <div className="toolbar" style={{ marginBottom: 0 }}>
+          <h1 className="page-title" style={{ flex: 1 }}>
+            Карточки блока «Что вас беспокоит»
+          </h1>
+          {canMutate ? (
+            <button
+              type="button"
+              className="primary"
+              onClick={() => {
+                setSlugEditedManually(false);
+                setModal({ mode: 'create', form: empty });
+              }}
+            >
+              Новая карточка
+            </button>
+          ) : null}
+        </div>
+        <p className="page-subtitle">
+          Карточки показываются на главном экране мобильного приложения и ведут в подбор рекомендаций. Иконка в
+          приложении подбирается по полю slug (отдельное фото в каталоге не используется).
+        </p>
       </div>
 
       {error ? <div className="error-banner">{error}</div> : null}
 
+      <FilterBar
+        query={searchQuery}
+        onQueryChange={setSearchQuery}
+        onReset={() => setSearchQuery('')}
+        resetDisabled={searchQuery.trim() === ''}
+        foundCount={filteredRows.length}
+        totalCount={rows.length}
+        placeholder="Заголовок, slug или описание"
+      />
+
       {loading ? (
         <p style={{ color: 'var(--muted)' }}>Загрузка…</p>
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap sticky-head">
           <table>
             <thead>
               <tr>
@@ -140,40 +196,47 @@ export function HealthConcernsPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.title}</td>
-                  <td className="mono">{r.slug}</td>
-                  <td>{r.sortOrder}</td>
-                  <td>{r.isActive ? 'да' : 'нет'}</td>
-                  {canMutate ? (
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setModal({
-                            mode: 'edit',
-                            id: r.id,
-                            form: {
-                              slug: r.slug,
-                              title: r.title,
-                              description: r.description ?? '',
-                              iconUrl: r.iconUrl ?? '',
-                              sortOrder: String(r.sortOrder),
-                              isActive: r.isActive,
-                            },
-                          })
-                        }
-                      >
-                        Изменить
-                      </button>{' '}
-                      <button type="button" className="danger" onClick={() => void remove(r.id, r.title)}>
-                        Удалить
-                      </button>
-                    </td>
-                  ) : null}
+              {filteredRows.length > 0 ? (
+                filteredRows.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.title}</td>
+                    <td className="mono">{r.slug}</td>
+                    <td>{r.sortOrder}</td>
+                    <td>{r.isActive ? 'да' : 'нет'}</td>
+                    {canMutate ? (
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSlugEditedManually(true);
+                            setModal({
+                              mode: 'edit',
+                              id: r.id,
+                              form: {
+                                slug: r.slug,
+                                title: r.title,
+                                description: r.description ?? '',
+                                isActive: r.isActive,
+                              },
+                            });
+                          }}
+                        >
+                          Изменить
+                        </button>{' '}
+                        <button type="button" className="danger" onClick={() => void remove(r.id, r.title)}>
+                          Удалить
+                        </button>
+                      </td>
+                    ) : null}
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={canMutate ? 5 : 4} style={{ color: 'var(--muted)' }}>
+                    Ничего не найдено. Попробуйте изменить запрос.
+                  </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
@@ -182,7 +245,7 @@ export function HealthConcernsPage() {
       {modal ? (
         <div className="modal-backdrop" role="presentation" onClick={() => setModal(null)}>
           <div className="modal" role="dialog" onClick={(ev) => ev.stopPropagation()}>
-            <h2>{modal.mode === 'create' ? 'Новая жалоба' : 'Редактирование'}</h2>
+            <h2>{modal.mode === 'create' ? 'Новая карточка' : 'Редактирование карточки'}</h2>
             <form onSubmit={(ev) => void submit(ev)}>
               <div className="field">
                 <label htmlFor="hc-slug">slug</label>
@@ -193,6 +256,7 @@ export function HealthConcernsPage() {
                   onChange={(ev) =>
                     setModal({ ...modal, form: { ...modal.form, slug: ev.target.value } })
                   }
+                  onFocus={() => setSlugEditedManually(true)}
                   required
                   pattern="^[a-z0-9]+(?:-[a-z0-9]+)*$"
                 />
@@ -203,7 +267,21 @@ export function HealthConcernsPage() {
                   id="hc-title"
                   value={modal.form.title}
                   onChange={(ev) =>
-                    setModal({ ...modal, form: { ...modal.form, title: ev.target.value } })
+                    setModal((prev) => {
+                      if (!prev) return prev;
+                      const nextTitle = ev.target.value;
+                      return {
+                        ...prev,
+                        form: {
+                          ...prev.form,
+                          title: nextTitle,
+                          slug:
+                            !slugEditedManually || prev.form.slug.trim() === ''
+                              ? slugify(nextTitle)
+                              : prev.form.slug,
+                        },
+                      };
+                    })
                   }
                   required
                 />
@@ -216,28 +294,6 @@ export function HealthConcernsPage() {
                   value={modal.form.description}
                   onChange={(ev) =>
                     setModal({ ...modal, form: { ...modal.form, description: ev.target.value } })
-                  }
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="hc-icon">Иконка URL</label>
-                <input
-                  id="hc-icon"
-                  type="url"
-                  value={modal.form.iconUrl}
-                  onChange={(ev) =>
-                    setModal({ ...modal, form: { ...modal.form, iconUrl: ev.target.value } })
-                  }
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="hc-sort">Порядок сортировки</label>
-                <input
-                  id="hc-sort"
-                  type="number"
-                  value={modal.form.sortOrder}
-                  onChange={(ev) =>
-                    setModal({ ...modal, form: { ...modal.form, sortOrder: ev.target.value } })
                   }
                 />
               </div>

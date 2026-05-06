@@ -71,4 +71,24 @@ export class CreateSpecialistDto {
   @IsString({ each: true })
   @MaxLength(80, { each: true })
   specializations?: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Какие услуги оказывает (id услуг из выбранных студий; для записи в приложении)',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsUUID('4', { each: true })
+  serviceIds?: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Направления деятельности (категории), к которым относится специалист',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsUUID('4', { each: true })
+  categoryIds?: string[];
 }

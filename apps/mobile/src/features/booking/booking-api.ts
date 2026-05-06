@@ -1,4 +1,4 @@
-import { AppointmentSource } from '@podocare/shared-types';
+import { AppointmentSource } from '@srs/shared-types';
 
 import { apiFetchJsonAuth } from '@/shared/api/authenticated-fetch';
 
@@ -37,6 +37,14 @@ export type StudioServiceDto = {
   durationMinutes: number;
   priceMinor: number;
   currency: string;
+};
+
+export type HealthConcernDto = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  iconUrl: string | null;
 };
 
 export async function fetchBookingSlots(params: {
@@ -108,5 +116,31 @@ export async function fetchSpecialistServices(
 ): Promise<StudioServiceDto[]> {
   return apiFetchJsonAuth<StudioServiceDto[]>(
     `/studios/${studioId}/specialists/${specialistId}/services`,
+  );
+}
+
+export async function fetchHealthConcerns(): Promise<HealthConcernDto[]> {
+  return apiFetchJsonAuth<HealthConcernDto[]>('/studios/health-concerns');
+}
+
+export async function fetchHealthConcernBySlug(slug: string): Promise<HealthConcernDto> {
+  return apiFetchJsonAuth<HealthConcernDto>(`/studios/health-concerns/${encodeURIComponent(slug)}`);
+}
+
+export type StudioDirectionDto = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  iconKey: string;
+};
+
+export async function fetchStudioDirections(): Promise<StudioDirectionDto[]> {
+  return apiFetchJsonAuth<StudioDirectionDto[]>('/studios/studio-directions');
+}
+
+export async function fetchStudioDirectionBySlug(slug: string): Promise<StudioDirectionDto> {
+  return apiFetchJsonAuth<StudioDirectionDto>(
+    `/studios/studio-directions/${encodeURIComponent(slug)}`,
   );
 }

@@ -40,7 +40,7 @@ export enum AppointmentStatus {
   NoShow = 'NO_SHOW',
 }
 
-/** Канал создания записи. PodoCare — единственный источник правды для записей. */
+/** Канал создания записи. Solodova Recovery System — единственный источник правды для записей. */
 export enum AppointmentSource {
   /** Создана клиентом через мобильное приложение. */
   MobileApp = 'MOBILE_APP',

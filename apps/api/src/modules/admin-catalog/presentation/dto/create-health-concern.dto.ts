@@ -19,7 +19,7 @@ export class CreateHealthConcernDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @MaxLength(2000)
+  @MaxLength(20000)
   description?: string;
 
   @ApiPropertyOptional()

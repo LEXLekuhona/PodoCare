@@ -1,5 +1,5 @@
 {
-  "extends": "@podocare/tsconfig/nestjs.json",
+  "extends": "@srs/tsconfig/nestjs.json",
   "compilerOptions": {
     "composite": true,
     "outDir": "./dist",

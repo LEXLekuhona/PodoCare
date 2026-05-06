@@ -1,5 +1,6 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 
 import { AuthService } from '../application/auth.service';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -13,18 +14,23 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('otp/request')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Запрашивает OTP код для входа клиента по телефону.' })
   requestOtp(@Body() body: RequestOtpDto) {
     return this.authService.requestOtp(body);
   }
-
   @Post('otp/verify')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Проверяет OTP и выдаёт пару токенов + профиль пользователя.' })
   verifyOtp(@Body() body: VerifyOtpDto) {
     return this.authService.verifyOtp(body);
   }
 
   @Post('staff/login')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Логин сотрудника по email + password.' })
   staffLogin(@Body() body: StaffLoginDto) {
     return this.authService.loginStaff(body);

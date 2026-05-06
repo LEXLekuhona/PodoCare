@@ -12,29 +12,46 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@podocare/shared-types';
+import { UserRole } from '@srs/shared-types';
 
 import { CurrentUser } from '../../auth/infrastructure/current-user.decorator';
 import { JwtAuthGuard } from '../../auth/infrastructure/jwt-auth.guard';
 import { Roles } from '../../auth/infrastructure/roles.decorator';
 import { RolesGuard } from '../../auth/infrastructure/roles.guard';
 import { AdminCatalogService } from '../application/admin-catalog.service';
+import { AdminPhysicalGoodsService } from '../application/admin-physical-goods.service';
+import { AdminServiceCategoriesService } from '../application/admin-service-categories.service';
+import { AdminSpecialistShiftsService } from '../application/admin-specialist-shifts.service';
 import { AdminSpecialistsService } from '../application/admin-specialists.service';
 import { AdminStaffService } from '../application/admin-staff.service';
+import { AdminStudioServicesService } from '../application/admin-studio-services.service';
 import { CreateFaqItemDto } from './dto/create-faq-item.dto';
 import { CreateHealthConcernDto } from './dto/create-health-concern.dto';
+import { CreateStudioDirectionDto } from './dto/create-studio-direction.dto';
 import { CreateNetworkDto } from './dto/create-network.dto';
+import { CreatePhysicalGoodCategoryDto } from './dto/create-physical-good-category.dto';
+import { CreatePhysicalGoodDto } from './dto/create-physical-good.dto';
+import { CreateServiceCategoryDto } from './dto/create-service-category.dto';
+import { CreateSpecialistShiftDto } from './dto/create-specialist-shift.dto';
+import { CreateSpecialistShiftsBulkDto } from './dto/create-specialist-shifts-bulk.dto';
 import { CreateSpecialistDto } from './dto/create-specialist.dto';
 import { CreateStaffUserDto } from './dto/create-staff-user.dto';
+import { CreateStudioServiceDto } from './dto/create-studio-service.dto';
 import { CreateStudioDto } from './dto/create-studio.dto';
+import { ListSpecialistShiftsQueryDto } from './dto/list-specialist-shifts.query.dto';
 import { ListSpecialistsQueryDto } from './dto/list-specialists.query.dto';
 import { ListStaffQueryDto } from './dto/list-staff.query.dto';
 import { ListStudiosQueryDto } from './dto/list-studios.query.dto';
 import { UpdateFaqItemDto } from './dto/update-faq-item.dto';
 import { UpdateHealthConcernDto } from './dto/update-health-concern.dto';
+import { UpdateStudioDirectionDto } from './dto/update-studio-direction.dto';
 import { UpdateNetworkDto } from './dto/update-network.dto';
+import { UpdatePhysicalGoodCategoryDto } from './dto/update-physical-good-category.dto';
+import { UpdatePhysicalGoodDto } from './dto/update-physical-good.dto';
+import { UpdateServiceCategoryDto } from './dto/update-service-category.dto';
 import { UpdateSpecialistDto } from './dto/update-specialist.dto';
 import { UpdateStaffUserDto } from './dto/update-staff-user.dto';
+import { UpdateStudioServiceDto } from './dto/update-studio-service.dto';
 import { UpdateStudioDto } from './dto/update-studio.dto';
 
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
@@ -55,6 +72,10 @@ export class AdminCatalogController {
     private readonly adminCatalogService: AdminCatalogService,
     private readonly adminStaffService: AdminStaffService,
     private readonly adminSpecialistsService: AdminSpecialistsService,
+    private readonly adminStudioServicesService: AdminStudioServicesService,
+    private readonly adminServiceCategoriesService: AdminServiceCategoriesService,
+    private readonly adminPhysicalGoodsService: AdminPhysicalGoodsService,
+    private readonly adminSpecialistShiftsService: AdminSpecialistShiftsService,
   ) {}
 
   // --- Networks ---
@@ -129,6 +150,150 @@ export class AdminCatalogController {
     return this.adminCatalogService.deleteStudio(user, id);
   }
 
+  // --- Услуги студии ---
+
+  @Get('studios/:studioId/services')
+  @ApiOperation({ summary: 'Услуги студии (все, для админки)' })
+  listStudioServices(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('studioId', ParseUUIDPipe) studioId: string,
+  ) {
+    return this.adminStudioServicesService.list(user, studioId);
+  }
+
+  @Get('studios/:studioId/services/:serviceId')
+  @ApiOperation({ summary: 'Услуга по id' })
+  getStudioService(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('studioId', ParseUUIDPipe) studioId: string,
+    @Param('serviceId', ParseUUIDPipe) serviceId: string,
+  ) {
+    return this.adminStudioServicesService.getById(user, studioId, serviceId);
+  }
+
+  @Post('studios/:studioId/services')
+  @ApiOperation({ summary: 'Создать услугу в студии' })
+  createStudioService(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('studioId', ParseUUIDPipe) studioId: string,
+    @Body() dto: CreateStudioServiceDto,
+  ) {
+    return this.adminStudioServicesService.create(user, studioId, dto);
+  }
+
+  @Patch('studios/:studioId/services/:serviceId')
+  @ApiOperation({ summary: 'Обновить услугу' })
+  updateStudioService(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('studioId', ParseUUIDPipe) studioId: string,
+    @Param('serviceId', ParseUUIDPipe) serviceId: string,
+    @Body() dto: UpdateStudioServiceDto,
+  ) {
+    return this.adminStudioServicesService.update(user, studioId, serviceId, dto);
+  }
+
+  @Delete('studios/:studioId/services/:serviceId')
+  @ApiOperation({ summary: 'Удалить услугу' })
+  deleteStudioService(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('studioId', ParseUUIDPipe) studioId: string,
+    @Param('serviceId', ParseUUIDPipe) serviceId: string,
+  ) {
+    return this.adminStudioServicesService.delete(user, studioId, serviceId);
+  }
+
+  // --- Health concerns ---
+
+  @Get('networks/:networkId/physical-good-categories')
+  @ApiOperation({ summary: 'Категории товаров сети (включая неактивные)' })
+  listPhysicalGoodCategories(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('networkId', ParseUUIDPipe) networkId: string,
+  ) {
+    return this.adminPhysicalGoodsService.listCategories(user, networkId);
+  }
+
+  @Post('networks/:networkId/physical-good-categories')
+  @ApiOperation({ summary: 'Создать категорию товаров' })
+  createPhysicalGoodCategory(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('networkId', ParseUUIDPipe) networkId: string,
+    @Body() dto: CreatePhysicalGoodCategoryDto,
+  ) {
+    return this.adminPhysicalGoodsService.createCategory(user, networkId, dto);
+  }
+
+  @Patch('networks/:networkId/physical-good-categories/:categoryId')
+  @ApiOperation({ summary: 'Обновить категорию товаров' })
+  updatePhysicalGoodCategory(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('networkId', ParseUUIDPipe) networkId: string,
+    @Param('categoryId', ParseUUIDPipe) categoryId: string,
+    @Body() dto: UpdatePhysicalGoodCategoryDto,
+  ) {
+    return this.adminPhysicalGoodsService.updateCategory(user, networkId, categoryId, dto);
+  }
+
+  @Delete('networks/:networkId/physical-good-categories/:categoryId')
+  @ApiOperation({ summary: 'Удалить категорию товаров' })
+  deletePhysicalGoodCategory(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('networkId', ParseUUIDPipe) networkId: string,
+    @Param('categoryId', ParseUUIDPipe) categoryId: string,
+  ) {
+    return this.adminPhysicalGoodsService.deleteCategory(user, networkId, categoryId);
+  }
+
+  @Get('networks/:networkId/physical-goods')
+  @ApiOperation({ summary: 'Товары сети (включая неактивные)' })
+  listPhysicalGoods(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('networkId', ParseUUIDPipe) networkId: string,
+  ) {
+    return this.adminPhysicalGoodsService.list(user, networkId);
+  }
+
+  @Get('networks/:networkId/physical-goods/:goodId')
+  @ApiOperation({ summary: 'Товар по id' })
+  getPhysicalGood(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('networkId', ParseUUIDPipe) networkId: string,
+    @Param('goodId', ParseUUIDPipe) goodId: string,
+  ) {
+    return this.adminPhysicalGoodsService.getById(user, networkId, goodId);
+  }
+
+  @Post('networks/:networkId/physical-goods')
+  @ApiOperation({ summary: 'Создать товар в сети' })
+  createPhysicalGood(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('networkId', ParseUUIDPipe) networkId: string,
+    @Body() dto: CreatePhysicalGoodDto,
+  ) {
+    return this.adminPhysicalGoodsService.create(user, networkId, dto);
+  }
+
+  @Patch('networks/:networkId/physical-goods/:goodId')
+  @ApiOperation({ summary: 'Обновить товар' })
+  updatePhysicalGood(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('networkId', ParseUUIDPipe) networkId: string,
+    @Param('goodId', ParseUUIDPipe) goodId: string,
+    @Body() dto: UpdatePhysicalGoodDto,
+  ) {
+    return this.adminPhysicalGoodsService.update(user, networkId, goodId, dto);
+  }
+
+  @Delete('networks/:networkId/physical-goods/:goodId')
+  @ApiOperation({ summary: 'Удалить товар' })
+  deletePhysicalGood(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('networkId', ParseUUIDPipe) networkId: string,
+    @Param('goodId', ParseUUIDPipe) goodId: string,
+  ) {
+    return this.adminPhysicalGoodsService.delete(user, networkId, goodId);
+  }
+
   // --- Health concerns ---
 
   @Get('health-concerns')
@@ -163,6 +328,42 @@ export class AdminCatalogController {
   @ApiOperation({ summary: 'Удалить запись (SuperAdmin / NetworkOwner)' })
   deleteHealthConcern(@CurrentUser() user: JwtAccessPayload, @Param('id', ParseUUIDPipe) id: string) {
     return this.adminCatalogService.deleteHealthConcern(user, id);
+  }
+
+  // --- Studio directions ---
+
+  @Get('studio-directions')
+  @ApiOperation({ summary: 'Направления студии (блок на главной в приложении)' })
+  listStudioDirections() {
+    return this.adminCatalogService.listStudioDirections();
+  }
+
+  @Get('studio-directions/:id')
+  @ApiOperation({ summary: 'Направление по id' })
+  getStudioDirection(@Param('id', ParseUUIDPipe) id: string) {
+    return this.adminCatalogService.getStudioDirection(id);
+  }
+
+  @Post('studio-directions')
+  @ApiOperation({ summary: 'Создать направление (SuperAdmin / NetworkOwner)' })
+  createStudioDirection(@CurrentUser() user: JwtAccessPayload, @Body() dto: CreateStudioDirectionDto) {
+    return this.adminCatalogService.createStudioDirection(user, dto);
+  }
+
+  @Patch('studio-directions/:id')
+  @ApiOperation({ summary: 'Обновить направление (SuperAdmin / NetworkOwner)' })
+  updateStudioDirection(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateStudioDirectionDto,
+  ) {
+    return this.adminCatalogService.updateStudioDirection(user, id, dto);
+  }
+
+  @Delete('studio-directions/:id')
+  @ApiOperation({ summary: 'Удалить направление (SuperAdmin / NetworkOwner)' })
+  deleteStudioDirection(@CurrentUser() user: JwtAccessPayload, @Param('id', ParseUUIDPipe) id: string) {
+    return this.adminCatalogService.deleteStudioDirection(user, id);
   }
 
   // --- FAQ ---
@@ -201,6 +402,42 @@ export class AdminCatalogController {
     return this.adminCatalogService.deleteFaqItem(user, id);
   }
 
+  // --- Категории услуг (направления деятельности) ---
+
+  @Get('service-categories')
+  @ApiOperation({ summary: 'Все категории услуг' })
+  listServiceCategories() {
+    return this.adminServiceCategoriesService.list();
+  }
+
+  @Get('service-categories/:id')
+  @ApiOperation({ summary: 'Категория по id' })
+  getServiceCategory(@Param('id', ParseUUIDPipe) id: string) {
+    return this.adminServiceCategoriesService.getById(id);
+  }
+
+  @Post('service-categories')
+  @ApiOperation({ summary: 'Создать категорию (SuperAdmin / NetworkOwner)' })
+  createServiceCategory(@CurrentUser() user: JwtAccessPayload, @Body() dto: CreateServiceCategoryDto) {
+    return this.adminServiceCategoriesService.create(user, dto);
+  }
+
+  @Patch('service-categories/:id')
+  @ApiOperation({ summary: 'Обновить категорию (SuperAdmin / NetworkOwner)' })
+  updateServiceCategory(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateServiceCategoryDto,
+  ) {
+    return this.adminServiceCategoriesService.update(user, id, dto);
+  }
+
+  @Delete('service-categories/:id')
+  @ApiOperation({ summary: 'Удалить категорию (SuperAdmin / NetworkOwner)' })
+  deleteServiceCategory(@CurrentUser() user: JwtAccessPayload, @Param('id', ParseUUIDPipe) id: string) {
+    return this.adminServiceCategoriesService.delete(user, id);
+  }
+
   // --- Специалисты ---
 
   @Get('specialists')
@@ -235,6 +472,46 @@ export class AdminCatalogController {
   @ApiOperation({ summary: 'Деактивировать специалиста' })
   deleteSpecialist(@CurrentUser() user: JwtAccessPayload, @Param('id', ParseUUIDPipe) id: string) {
     return this.adminSpecialistsService.deactivate(user, id);
+  }
+
+  @Get('specialists/:id/shifts')
+  @ApiOperation({ summary: 'Смены специалиста (дата и время работы)' })
+  listSpecialistShifts(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() q: ListSpecialistShiftsQueryDto,
+  ) {
+    return this.adminSpecialistShiftsService.list(user, id, q);
+  }
+
+  @Post('specialists/:id/shifts')
+  @ApiOperation({ summary: 'Добавить смену специалисту' })
+  createSpecialistShift(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateSpecialistShiftDto,
+  ) {
+    return this.adminSpecialistShiftsService.create(user, id, dto);
+  }
+
+  @Post('specialists/:id/shifts/bulk')
+  @ApiOperation({ summary: 'Массово добавить смены по шаблону недели' })
+  createSpecialistShiftsBulk(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateSpecialistShiftsBulkDto,
+  ) {
+    return this.adminSpecialistShiftsService.createBulk(user, id, dto);
+  }
+
+  @Delete('specialists/:id/shifts/:shiftId')
+  @ApiOperation({ summary: 'Удалить смену специалиста' })
+  deleteSpecialistShift(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('shiftId', ParseUUIDPipe) shiftId: string,
+  ) {
+    return this.adminSpecialistShiftsService.delete(user, id, shiftId);
   }
 
   // --- Staff (сотрудники, без специалистов) ---

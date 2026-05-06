@@ -2,16 +2,20 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
   TextInput,
+  TouchableWithoutFeedback,
   View as RNView,
 } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
 import { requestOtp, verifyOtp } from '@/features/auth/auth-api';
+import { mergeQuizSessionWithUser } from '@/features/quiz/quiz-api';
+import { clearLastQuizSessionId, getLastQuizSessionId } from '@/features/quiz/quiz-session-store';
 import { ApiError } from '@/shared/api/api-error';
 import { digitsToRuE164 } from '@/shared/lib/phone';
 import { SafeAreaPadding } from '@/shared/ui/safe-area';
@@ -90,6 +94,15 @@ export default function OtpScreen() {
           code: digits,
           deviceType: Platform.OS === 'ios' ? 'mobile_ios' : 'mobile_android',
         });
+        const pendingQuizSessionId = await getLastQuizSessionId();
+        if (pendingQuizSessionId) {
+          try {
+            await mergeQuizSessionWithUser(pendingQuizSessionId);
+            await clearLastQuizSessionId();
+          } catch {
+            // Ошибка merge не должна блокировать вход в приложение.
+          }
+        }
         if (cancelled) return;
         router.push('/(auth)/name');
       } catch (e: unknown) {
@@ -115,8 +128,9 @@ export default function OtpScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
     >
-      <View style={styles.screen}>
-        <SafeAreaPadding minTop={10} minBottom={0} style={styles.topNav} lightColor="transparent" darkColor="transparent">
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <View style={styles.screen}>
+          <SafeAreaPadding minTop={10} minBottom={0} style={styles.topNav} lightColor="transparent" darkColor="transparent">
           <Pressable
             onPress={() => {
               if (router.canGoBack()) router.back();
@@ -224,7 +238,8 @@ export default function OtpScreen() {
             </Text>
           ) : null}
         </View>
-      </View>
+        </View>
+      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 }

@@ -6,6 +6,12 @@ export interface AppConfig {
   host: string;
   globalPrefix: string;
   corsOrigins: string[] | '*';
+  queueAlerts: {
+    reminderDelayedWarn: number;
+    reminderDelayedCritical: number;
+    lifecycleDelayedWarn: number;
+    lifecycleDelayedCritical: number;
+  };
 }
 
 export default registerAs<AppConfig>('app', () => {
@@ -24,5 +30,11 @@ export default registerAs<AppConfig>('app', () => {
     host: process.env.API_HOST ?? '0.0.0.0',
     globalPrefix: process.env.API_GLOBAL_PREFIX ?? 'api',
     corsOrigins,
+    queueAlerts: {
+      reminderDelayedWarn: Number(process.env.ALERT_REMINDER_DELAYED_WARN ?? 100),
+      reminderDelayedCritical: Number(process.env.ALERT_REMINDER_DELAYED_CRITICAL ?? 300),
+      lifecycleDelayedWarn: Number(process.env.ALERT_LIFECYCLE_DELAYED_WARN ?? 50),
+      lifecycleDelayedCritical: Number(process.env.ALERT_LIFECYCLE_DELAYED_CRITICAL ?? 150),
+    },
   };
 });

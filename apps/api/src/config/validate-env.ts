@@ -26,7 +26,8 @@ export const envSchema = z.object({
 
   DATA_ENCRYPTION_KEY: z.string().min(32),
 
-  OTP_PROVIDER: z.enum(['console', 'smsc', 'sms_aero']).default('console'),
+  OTP_PROVIDER: z.enum(['console', 'sms_ru', 'smsc', 'sms_aero']).default('console'),
+
   OTP_CODE_LENGTH: z.coerce.number().int().min(4).max(8).default(6),
   OTP_TTL_SECONDS: z.coerce.number().int().positive().default(300),
   OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
@@ -35,6 +36,10 @@ export const envSchema = z.object({
   SMS_RU_API_ID: z.string().optional(),
   SMS_DEFAULT_SENDER: z.string().optional(),
   NOTIFICATIONS_QUEUE_NAME: z.string().default('notifications'),
+  /** `console` — имитация отправки; `expo` — реальные push через Expo Push Service. */
+  PUSH_PROVIDER: z.enum(['console', 'expo']).default('console'),
+  /** Bearer-токен для Expo Push API (необязательно, но рекомендуется в production). */
+  EXPO_ACCESS_TOKEN: z.string().optional(),
   APPOINTMENT_MIN_LEAD_MINUTES: z.coerce.number().int().nonnegative().default(0),
 
   LOG_LEVEL: z
@@ -47,6 +52,10 @@ export const envSchema = z.object({
 
   THROTTLE_TTL_SECONDS: z.coerce.number().int().positive().default(60),
   THROTTLE_LIMIT: z.coerce.number().int().positive().default(100),
+  ALERT_REMINDER_DELAYED_WARN: z.coerce.number().int().nonnegative().default(100),
+  ALERT_REMINDER_DELAYED_CRITICAL: z.coerce.number().int().nonnegative().default(300),
+  ALERT_LIFECYCLE_DELAYED_WARN: z.coerce.number().int().nonnegative().default(50),
+  ALERT_LIFECYCLE_DELAYED_CRITICAL: z.coerce.number().int().nonnegative().default(150),
 
   S3_ACCESS_KEY: z.string().optional(),
   S3_SECRET_KEY: z.string().optional(),

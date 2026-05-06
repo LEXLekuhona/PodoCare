@@ -1,3 +1,3 @@
-const config = require('@podocare/eslint-config/nestjs');
+const config = require('@srs/eslint-config/nestjs');
 
 module.exports = config;

@@ -8,6 +8,7 @@ import { NOTIFICATIONS_QUEUE } from './application/notifications.jobs';
 import { ConsoleSmsProvider } from './infrastructure/providers/console-sms.provider';
 import { SMS_PROVIDER_TOKEN } from './infrastructure/providers/sms-provider.port';
 import { SmsRuProvider } from './infrastructure/providers/sms-ru.provider';
+import { PushDeliveryService } from './infrastructure/push/push-delivery.service';
 import { NotificationsProcessor } from './infrastructure/queue/notifications.processor';
 import { NotificationsController } from './presentation/notifications.controller';
 
@@ -36,6 +37,7 @@ import { NotificationsController } from './presentation/notifications.controller
   controllers: [NotificationsController],
   providers: [
     NotificationsService,
+    PushDeliveryService,
     NotificationsProcessor,
     ConsoleSmsProvider,
     SmsRuProvider,
@@ -55,6 +57,6 @@ import { NotificationsController } from './presentation/notifications.controller
       },
     },
   ],
-  exports: [NotificationsService],
+  exports: [NotificationsService, PushDeliveryService, BullModule],
 })
 export class NotificationsModule {}

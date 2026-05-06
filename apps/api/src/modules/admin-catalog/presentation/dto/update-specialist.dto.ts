@@ -78,4 +78,24 @@ export class UpdateSpecialistDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Услуги специалиста (id услуг; только из студий, где ведётся приём)',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsUUID('4', { each: true })
+  serviceIds?: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Направления деятельности (категории), к которым относится специалист',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsUUID('4', { each: true })
+  categoryIds?: string[];
 }

@@ -1,8 +1,9 @@
 import * as SecureStore from 'expo-secure-store';
 
+import { clearRegisteredPushTokenCache } from '@/features/push/push-token-cache';
 import { apiFetchJson } from '@/shared/api/client';
 
-const REFRESH_TOKEN_KEY = 'podocare.refreshToken.v1';
+const REFRESH_TOKEN_KEY = 'srs.refreshToken.v1';
 
 export type AuthTokens = {
   accessToken: string;
@@ -37,24 +38,36 @@ async function readRefreshToken(): Promise<string | null> {
   }
 }
 
+let rotatePromise: Promise<boolean> | null = null;
+
 export async function rotateRefreshToken(): Promise<boolean> {
-  const refreshToken = await readRefreshToken();
-  if (!refreshToken) return false;
+  // Если ротация уже идёт — ждём её, не запускаем новую
+  if (rotatePromise) return rotatePromise;
+
+  rotatePromise = (async () => {
+    const refreshToken = await readRefreshToken();
+    if (!refreshToken) return false;
+    try {
+      const next = await apiFetchJson<AuthTokens>('/auth/refresh', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refreshToken }),
+      });
+      await setSessionTokens(next);
+      return true;
+    } catch {
+      await clearSession();
+      return false;
+    }
+  })();
 
   try {
-    const next = await apiFetchJson<AuthTokens>('/auth/refresh', {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ refreshToken }),
-    });
-    await setSessionTokens(next);
-    return true;
-  } catch {
-    await clearSession();
-    return false;
+    return await rotatePromise;
+  } finally {
+    rotatePromise = null;
   }
 }
 
@@ -83,4 +96,5 @@ export async function logoutAndClearSession(): Promise<void> {
     }
   }
   await clearSession();
+  await clearRegisteredPushTokenCache();
 }

@@ -5,7 +5,7 @@ import { envSchema, validateEnv } from './validate-env';
 describe('validateEnv', () => {
   const validEnv = {
     NODE_ENV: 'test',
-    DATABASE_URL: 'postgresql://user:pass@localhost:5432/db',
+    DATABASE_URL: 'postgresql://user:pass@localhost:5433/db',
     JWT_ACCESS_SECRET: randomBytes(48).toString('base64'),
     JWT_REFRESH_SECRET: randomBytes(48).toString('base64'),
     DATA_ENCRYPTION_KEY: randomBytes(32).toString('base64'),

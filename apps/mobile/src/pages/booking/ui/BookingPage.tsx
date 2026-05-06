@@ -11,13 +11,12 @@ export function BookingPage() {
         <Text style={styles.sub} lightColor="rgba(11,27,20,0.65)" darkColor="rgba(255,255,255,0.65)">
           Выберите дату и время, затем услугу.
         </Text>
-
         <Pressable
-          onPress={() => router.push('/(app)/(tabs)/booking')}
+          onPress={() => router.push('/(app)/studio-selector')}
           style={({ pressed }) => [styles.button, pressed && styles.pressed]}
         >
           <Text style={styles.buttonText} lightColor="#FFFFFF" darkColor="#06130E">
-            Выбрать дату и время
+            Выбрать студию
           </Text>
         </Pressable>
       </View>

@@ -1,4 +1,4 @@
-import type { ApiErrorResponse } from '@podocare/shared-types';
+import type { ApiErrorResponse } from '@srs/shared-types';
 
 export class ApiError extends Error {
   constructor(

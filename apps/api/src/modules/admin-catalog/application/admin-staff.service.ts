@@ -5,11 +5,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { UserRole } from '@podocare/shared-types';
+import { UserRole } from '@srs/shared-types';
 import { Prisma } from '@prisma/client';
 import argon2 from 'argon2';
 
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
+import { normalizePhone, normalizeEmail } from '../../../common/utils/normalize-phone';
 
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 import type { CreateStaffUserDto } from '../presentation/dto/create-staff-user.dto';
@@ -25,29 +26,6 @@ const STUDIO_SCOPED_ROLES: UserRole[] = [UserRole.StudioAdmin];
 @Injectable()
 export class AdminStaffService {
   constructor(private readonly prisma: PrismaService) {}
-
-  private normalizePhone(raw: string): string {
-    const normalized = raw.replace(/[^\d+]/g, '');
-    const digits = normalized.replace(/\D/g, '');
-    if (digits.length < 10 || digits.length > 15) {
-      throw new BadRequestException('Некорректный номер телефона');
-    }
-    if (digits.length === 11 && digits.startsWith('8')) {
-      return `+7${digits.slice(1)}`;
-    }
-    if (digits.length === 11 && digits.startsWith('7')) {
-      return `+${digits}`;
-    }
-    return normalized.startsWith('+') ? `+${digits}` : `+${digits}`;
-  }
-
-  private normalizeEmail(raw: string): string {
-    const t = raw.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)) {
-      throw new BadRequestException('Некорректный email');
-    }
-    return t;
-  }
 
   private async getStudioAdminStudioId(userId: string): Promise<string> {
     const u = await this.prisma.user.findUnique({
@@ -236,8 +214,8 @@ export class AdminStaffService {
       if (!st) throw new NotFoundException(`Студия ${studioId} не найдена`);
     }
 
-    const phone = this.normalizePhone(dto.phone);
-    const email = this.normalizeEmail(dto.email);
+    const phone = normalizePhone(dto.phone);
+    const email = normalizeEmail(dto.email);
     const passwordHash = await argon2.hash(dto.password);
 
     try {
@@ -336,15 +314,15 @@ export class AdminStaffService {
 
     const data: Prisma.UserUpdateInput = {};
 
-    if (dto.email !== undefined) {
-      data.email = this.normalizeEmail(dto.email);
+    if (dto.email !== undefined && dto.email !== null) {
+      data.email = normalizeEmail(dto.email);
     }
-    if (dto.phone !== undefined) {
-      data.phone = this.normalizePhone(dto.phone);
+    if (dto.phone !== undefined && dto.phone !== null) {
+      data.phone = normalizePhone(dto.phone);
     }
     if (dto.firstName !== undefined) data.firstName = dto.firstName.trim();
     if (dto.lastName !== undefined) data.lastName = dto.lastName.trim();
-    if (dto.middleName !== undefined) {
+    if (dto.middleName !== undefined && dto.middleName !== null) {
       data.middleName = dto.middleName.trim() === '' ? null : dto.middleName.trim();
     }
     if (dto.password !== undefined) {

@@ -1,5 +1,5 @@
 {
-  "extends": "@podocare/tsconfig/base.json",
+  "extends": "@srs/tsconfig/base.json",
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
@@ -12,7 +12,7 @@
     "types": ["vite/client"],
     "baseUrl": ".",
     "paths": {
-      "@podocare/shared-types": ["../../packages/shared-types/src/index.ts"]
+      "@srs/shared-types": ["../../packages/shared-types/src/index.ts"]
     }
   },
   "include": ["src"]

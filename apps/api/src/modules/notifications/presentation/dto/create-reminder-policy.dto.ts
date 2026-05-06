@@ -1,4 +1,4 @@
-import { NotificationChannel, NotificationTemplateKey } from '@podocare/shared-types';
+import { NotificationChannel, NotificationTemplateKey } from '@srs/shared-types';
 import { Type } from 'class-transformer';
 import {
   IsBoolean,

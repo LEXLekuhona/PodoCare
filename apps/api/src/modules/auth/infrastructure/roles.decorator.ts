@@ -1,6 +1,6 @@
 import { SetMetadata } from '@nestjs/common';
 
-import type { UserRole } from '@podocare/shared-types';
+import type { UserRole } from '@srs/shared-types';
 
 export const ROLES_KEY = 'roles';
 

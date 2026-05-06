@@ -1,29 +1,29 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: podocare-postgres
+    container_name: srs-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-podocare}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-podocare_dev_pwd}
-      POSTGRES_DB: ${POSTGRES_DB:-podocare}
+      POSTGRES_USER: ${POSTGRES_USER:-srs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-srs_dev_pwd}
+      POSTGRES_DB: ${POSTGRES_DB:-srs}
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-podocare} -d ${POSTGRES_DB:-podocare}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-srs} -d ${POSTGRES_DB:-srs}"]
       interval: 5s
       timeout: 5s
       retries: 10
     networks:
-      - podocare
+      - srs
 
   redis:
     image: redis:7-alpine
-    container_name: podocare-redis
+    container_name: srs-redis
     restart: unless-stopped
     # noeviction — как рекомендует BullMQ (не выкидывать ключи очередей при давлении по памяти).
     command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
@@ -37,16 +37,16 @@ services:
       timeout: 3s
       retries: 10
     networks:
-      - podocare
+      - srs
 
   minio:
     image: minio/minio:latest
-    container_name: podocare-minio
+    container_name: srs-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-podocare}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-podocare_dev_pwd}
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-srs}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-srs_dev_pwd}
     ports:
       - "${S3_PORT:-9000}:9000"
       - "${S3_CONSOLE_PORT:-9001}:9001"
@@ -58,30 +58,30 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - podocare
+      - srs
 
   minio-setup:
     image: minio/mc:latest
-    container_name: podocare-minio-setup
+    container_name: srs-minio-setup
     depends_on:
       minio:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 ${S3_ACCESS_KEY:-podocare} ${S3_SECRET_KEY:-podocare_dev_pwd};
-      mc mb --ignore-existing local/${S3_BUCKET:-podocare-dev};
-      mc anonymous set download local/${S3_BUCKET:-podocare-dev};
+      mc alias set local http://minio:9000 ${S3_ACCESS_KEY:-srs} ${S3_SECRET_KEY:-srs_dev_pwd};
+      mc mb --ignore-existing local/${S3_BUCKET:-srs-dev};
+      mc anonymous set download local/${S3_BUCKET:-srs-dev};
       exit 0;
       "
     networks:
-      - podocare
+      - srs
 
   adminer:
     image: adminer:latest
-    container_name: podocare-adminer
+    container_name: srs-adminer
     restart: unless-stopped
     ports:
-      - "${ADMINER_PORT:-8080}:8080"
+      - "${ADMINER_PORT:-8085}:8080"
     environment:
       ADMINER_DEFAULT_SERVER: postgres
       ADMINER_DESIGN: pepa-linha-dark
@@ -89,7 +89,7 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - podocare
+      - srs
 
 volumes:
   postgres_data:
@@ -97,5 +97,5 @@ volumes:
   minio_data:
 
 networks:
-  podocare:
+  srs:
     driver: bridge

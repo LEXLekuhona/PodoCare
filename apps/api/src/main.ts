@@ -4,7 +4,6 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import type { NextFunction, Request, Response } from 'express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
@@ -12,6 +11,7 @@ import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
+import { stripUnderscoreCacheQueryParam } from './common/middleware/strip-underscore-cache-query.middleware';
 import type { AppConfig } from './config/app.config';
 
 async function bootstrap(): Promise<void> {
@@ -19,14 +19,7 @@ async function bootstrap(): Promise<void> {
     bufferLogs: true,
   });
 
-  /** До любых роутов / pipes: клиенты шлют `?_=` — иначе ValidationPipe (`forbidNonWhitelisted`) даёт «property _ should not exist». */
-  app.use((req: Request, _res: Response, next: NextFunction) => {
-    const q = req.query;
-    if (q != null && typeof q === 'object' && Object.prototype.hasOwnProperty.call(q, '_')) {
-      delete q._;
-    }
-    next();
-  });
+  app.use(stripUnderscoreCacheQueryParam);
 
   app.useLogger(app.get(Logger));
   app.flushLogs();
@@ -63,7 +56,7 @@ async function bootstrap(): Promise<void> {
     process.env.API_ENABLE_SWAGGER !== 'false' && appCfg.env !== 'production';
   if (swaggerEnabled) {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('PodoCare API')
+      .setTitle('Solodova Recovery System API')
       .setDescription(
         'REST API для мобильного приложения клиента, интерфейса студии на планшете и админ-панели.',
       )
@@ -81,7 +74,7 @@ async function bootstrap(): Promise<void> {
   await app.listen(appCfg.port, appCfg.host);
   const url = await app.getUrl();
   // eslint-disable-next-line no-console
-  console.log(`\n🚀  PodoCare API готов: ${url}/${appCfg.globalPrefix}`);
+  console.log(`\n🚀  Solodova Recovery System API готов: ${url}/${appCfg.globalPrefix}`);
   // eslint-disable-next-line no-console
   console.log(`📚  Swagger: ${url}/docs\n`);
 }

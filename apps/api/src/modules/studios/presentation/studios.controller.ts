@@ -41,5 +41,35 @@ export class StudiosController {
   listServices(@Param('studioId') studioId: string) {
     return this.studiosService.listServices(studioId);
   }
+
+  @Get(':studioId/products')
+  @ApiOperation({ summary: 'Активные товары сети выбранной студии.' })
+  listProducts(@Param('studioId') studioId: string) {
+    return this.studiosService.listProducts(studioId);
+  }
+
+  @Get('health-concerns')
+  @ApiOperation({ summary: 'Активные карточки блока "Что вас беспокоит".' })
+  listHealthConcerns() {
+    return this.studiosService.listHealthConcerns();
+  }
+
+  @Get('health-concerns/:slug')
+  @ApiOperation({ summary: 'Карточка "Что вас беспокоит" по slug.' })
+  getHealthConcern(@Param('slug') slug: string) {
+    return this.studiosService.getHealthConcernBySlug(slug);
+  }
+
+  @Get('studio-directions')
+  @ApiOperation({ summary: 'Активные направления студии (блок на главной).' })
+  listStudioDirections() {
+    return this.studiosService.listStudioDirections();
+  }
+
+  @Get('studio-directions/:slug')
+  @ApiOperation({ summary: 'Направление студии по slug (экран с описанием).' })
+  getStudioDirection(@Param('slug') slug: string) {
+    return this.studiosService.getStudioDirectionBySlug(slug);
+  }
 }
 

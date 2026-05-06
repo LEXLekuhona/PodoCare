@@ -13,7 +13,7 @@ export default defineConfig({
   resolve: {
     // dist пакета — CommonJS; именованные ESM-импорты в браузере ломаются.
     alias: {
-      '@podocare/shared-types': path.join(workspaceRoot, 'packages/shared-types/src/index.ts'),
+      '@srs/shared-types': path.join(workspaceRoot, 'packages/shared-types/src/index.ts'),
     },
   },
   server: {

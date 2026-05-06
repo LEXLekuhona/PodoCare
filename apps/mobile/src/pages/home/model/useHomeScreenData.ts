@@ -2,6 +2,12 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
 
 import {
+  fetchHealthConcerns,
+  fetchStudioDirections,
+  type HealthConcernDto,
+  type StudioDirectionDto,
+} from '@/features/booking/booking-api';
+import {
   getCachedNextAppointment,
   refreshNextAppointmentRemote,
   subscribeNextAppointment,
@@ -9,7 +15,7 @@ import {
 import type { NextAppointmentDto } from '@/features/appointment/next-appointment.types';
 import { getMe, type MeProfile } from '@/features/user/me-api';
 import { loadSelectedStudio, type SelectedStudio } from '@/features/studio/local-studio-storage';
-import { apiFetchJsonAuth } from '@/shared/api/authenticated-fetch';
+import { fetchFaqItems, type FaqItemDto } from '@/features/faq/faq-api';
 import { ApiError } from '@/shared/api/api-error';
 import { appointmentStatusLabel, formatRuAppointmentDateTime } from '@/shared/lib/format-appointment';
 
@@ -27,38 +33,28 @@ function safeFormatAppointment(iso: string): { dateLine: string; timeLine: strin
   }
 }
 
-export type FaqItemDto = {
-  id: string;
-  category: string;
-  question: string;
-  answer: string;
-  sortOrder: number;
-};
+function toTrimmedString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
 
-export type ContentFeedItemDto = {
-  id: string;
-  title: string;
-  description: string | null;
-  coverImageUrl: string | null;
-  publishedAt: string | null;
-  format: string;
-  seriesId: string;
-};
+export type { FaqItemDto } from '@/features/faq/faq-api';
 
 export function useHomeScreenData() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [me, setMe] = useState<MeProfile | null>(null);
   const [faq, setFaq] = useState<FaqItemDto[]>([]);
-  const [feedItems, setFeedItems] = useState<ContentFeedItemDto[]>([]);
+  const [healthConcerns, setHealthConcerns] = useState<HealthConcernDto[]>([]);
+  const [studioDirections, setStudioDirections] = useState<StudioDirectionDto[]>([]);
   const [nextAppointment, setNextAppointment] = useState<NextAppointmentDto | null>(() =>
     getCachedNextAppointment(),
   );
   const [selectedStudio, setSelectedStudio] = useState<SelectedStudio | null>(null);
-
+  
   useEffect(() => subscribeNextAppointment(setNextAppointment), []);
-
+  
   const reload = useCallback(async () => {
+    let studioLocal: SelectedStudio | null = null;
     setLoading(true);
     setError(null);
     try {
@@ -70,22 +66,26 @@ export function useHomeScreenData() {
       setLoading(false);
       return;
     }
-
     try {
-      const [faqRes, feedRes, studioLocal] = await Promise.all([
-        apiFetchJsonAuth<FaqItemDto[]>('/faq'),
-        apiFetchJsonAuth<{ items: ContentFeedItemDto[] }>('/content/feed'),
+      const [faqRes, concernsRes, directionsRes, studioRes] = await Promise.all([
+        fetchFaqItems(),
+        fetchHealthConcerns(),
+        fetchStudioDirections(),
         loadSelectedStudio(),
       ]);
+      studioLocal = studioRes;
       setFaq(faqRes);
-      setFeedItems(feedRes.items ?? []);
+      setHealthConcerns(concernsRes);
+      setStudioDirections(directionsRes);
       setSelectedStudio(studioLocal);
       setError(null);
     } catch (e: unknown) {
       setError(loadErrorMessage(e));
-    } finally {
-      const studioLocal = await loadSelectedStudio();
+      studioLocal = await loadSelectedStudio();
       if (studioLocal != null) setSelectedStudio(studioLocal);
+      setHealthConcerns([]);
+      setStudioDirections([]);
+    } finally {
       await refreshNextAppointmentRemote(studioLocal?.id);
       setLoading(false);
     }
@@ -119,9 +119,12 @@ export function useHomeScreenData() {
     }, []),
   );
 
+  const nextStudioId = toTrimmedString(nextAppointment?.studio?.id);
+
   const appointmentForSelectedStudio =
     nextAppointment != null &&
-    (selectedStudio == null || nextAppointment.studio.id === selectedStudio.id)
+    nextStudioId !== '' &&
+    (selectedStudio == null || nextStudioId === selectedStudio.id)
       ? nextAppointment
       : null;
 
@@ -132,12 +135,17 @@ export function useHomeScreenData() {
           appointmentId: appointmentForSelectedStudio.id,
           ...safeFormatAppointment(appointmentForSelectedStudio.startsAt),
           statusLabel:
-            appointmentStatusLabel(appointmentForSelectedStudio.status).trim() || 'Запланировано',
-          specialistName:
-            `${appointmentForSelectedStudio.specialist.firstName} ${appointmentForSelectedStudio.specialist.lastName}`.trim() ||
-            'Специалист',
-          serviceName: appointmentForSelectedStudio.service.name?.trim() || 'Услуга',
-          address: appointmentForSelectedStudio.studio.address?.trim() || 'Адрес уточняется',
+            toTrimmedString(
+              appointmentStatusLabel(toTrimmedString(appointmentForSelectedStudio.status)),
+            ) || 'Запланировано',
+          specialistName: [
+            toTrimmedString(appointmentForSelectedStudio.specialist?.firstName),
+            toTrimmedString(appointmentForSelectedStudio.specialist?.lastName),
+          ]
+            .filter(Boolean)
+            .join(' ') || 'Специалист',
+          serviceName: toTrimmedString(appointmentForSelectedStudio.service?.name) || 'Услуга',
+          address: toTrimmedString(appointmentForSelectedStudio.studio?.address) || 'Адрес уточняется',
         };
 
   const studioLabel =
@@ -149,7 +157,8 @@ export function useHomeScreenData() {
     reload,
     firstName: me?.firstName ?? '',
     faq,
-    feedItems,
+    healthConcerns,
+    studioDirections,
     nextAppointment: appointmentForSelectedStudio,
     appointmentPresentation,
     selectedStudioId: selectedStudio?.id ?? null,

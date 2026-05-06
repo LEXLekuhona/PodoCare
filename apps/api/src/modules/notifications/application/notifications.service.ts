@@ -10,7 +10,7 @@ import {
   NotificationType,
   PushProvider,
   SmsProvider as SharedSmsProvider,
-} from '@podocare/shared-types';
+} from '@srs/shared-types';
 
 import type { NotificationsConfig } from '../../../config/notifications.config';
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
@@ -276,6 +276,14 @@ export class NotificationsService {
         appointment.startsAt,
       );
 
+      const pref = await this.prisma.notificationPreference.findUnique({
+        where: { userId: appointment.client.id },
+        select: { reminderSmsEnabled: true },
+      });
+      // Если клиент отключил SMS-напоминания — не ставим задачу вообще
+      if (pref !== null && pref.reminderSmsEnabled === false) {
+        continue;
+      }
       await this.enqueueSmsJob(
         {
           userId: appointment.client.id,

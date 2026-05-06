@@ -1,95 +1,96 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text, View } from '@/components/Themed';
+import { fetchStudioProducts, type StudioProductDto } from '@/features/products/products-api';
+import { loadSelectedStudio } from '@/features/studio/local-studio-storage';
+import { ApiError } from '@/shared/api/api-error';
 import { LeafLogo } from '@/shared/ui/icons/LeafLogo';
 import { SafeAreaPadding } from '@/shared/ui/safe-area';
 
-type CategoryId = 'all' | 'care' | 'tools' | 'creams';
+type CategoryId = 'all' | string;
 
 type Product = {
   id: string;
   title: string;
-  subtitle: string;
+  subtitle: string | null;
   price: string;
-  category: Exclude<CategoryId, 'all'>;
+  category: string;
   featured?: boolean;
-  badge?: string;
+  imageUrls: string[];
 };
 
-const CATEGORIES: { id: CategoryId; label: string }[] = [
-  { id: 'all', label: 'Все' },
-  { id: 'care', label: 'Уход' },
-  { id: 'tools', label: 'Инструменты' },
-  { id: 'creams', label: 'Кремы' },
-];
+const UNCATEGORIZED = 'Без категории';
 
 function iconForProduct(p: Product): React.ComponentProps<typeof FontAwesome>['name'] {
-  if (p.category === 'tools') return 'wrench';
-  if (p.category === 'creams') return 'tint';
+  const category = p.category.toLowerCase();
+  if (category.includes('инстру')) return 'wrench';
+  if (category.includes('крем') || category.includes('маз')) return 'tint';
+  if (category.includes('уход')) return 'leaf';
   return 'leaf';
 }
 
-const PRODUCTS: Product[] = [
-  {
-    id: 'p1',
-    title: 'Увлажняющий крем для стоп',
-    subtitle: 'Восстановление кожи, без отдушек',
-    price: '890 ₽',
-    category: 'creams',
-    featured: true,
-    badge: 'Хит',
-  },
-  {
-    id: 'p2',
-    title: 'Средство для ногтевой пластины',
-    subtitle: 'Профилактика, мягкая формула',
-    price: '1 150 ₽',
-    category: 'care',
-    featured: true,
-  },
-  {
-    id: 'p3',
-    title: 'Набор пилок и бафов',
-    subtitle: 'Для аккуратной обработки в домашних условиях',
-    price: '640 ₽',
-    category: 'tools',
-    featured: true,
-  },
-  {
-    id: 'p4',
-    title: 'Антисептик для кожи стоп',
-    subtitle: 'Деликатное очищение перед уходом',
-    price: '720 ₽',
-    category: 'care',
-  },
-  {
-    id: 'p5',
-    title: 'Кератолитик мягкого действия',
-    subtitle: 'Точечно для огрубевшей кожи',
-    price: '1 290 ₽',
-    category: 'creams',
-    badge: 'Новинка',
-  },
-  {
-    id: 'p6',
-    title: 'Разделитель для пальцев',
-    subtitle: 'Силикон, многоразовый',
-    price: '420 ₽',
-    category: 'tools',
-  },
-];
+function mapDto(dto: StudioProductDto, index: number): Product {
+  const category = dto.category.trim() || UNCATEGORIZED;
+  return {
+    id: dto.id,
+    title: dto.name,
+    subtitle: dto.description,
+    price: `${(dto.priceMinor / 100).toLocaleString('ru-RU')} ${dto.currency}`,
+    category,
+    featured: index < 6,
+    imageUrls: dto.imageUrls,
+  };
+}
 
 export function ProductsPage() {
   const insets = useSafeAreaInsets();
   const [category, setCategory] = useState<CategoryId>('all');
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const featured = useMemo(() => PRODUCTS.filter((p) => p.featured), []);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const studio = await loadSelectedStudio();
+      if (!studio?.id) {
+        setProducts([]);
+        setError('Сначала выберите студию на главном экране');
+        return;
+      }
+      const list = await fetchStudioProducts(studio.id);
+      setProducts(list.map(mapDto));
+    } catch (e) {
+      setProducts([]);
+      setError(e instanceof ApiError ? e.message : 'Не удалось загрузить товары');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const categories = useMemo(() => {
+    const uniq = Array.from(new Set(products.map((p) => p.category)));
+    return [{ id: 'all', label: 'Все' }, ...uniq.map((x) => ({ id: x, label: x }))];
+  }, [products]);
+
+  useEffect(() => {
+    if (!categories.some((c) => c.id === category)) {
+      setCategory('all');
+    }
+  }, [categories, category]);
+
+  const featured = useMemo(() => products.filter((p) => p.featured), [products]);
   const catalog = useMemo(
-    () => (category === 'all' ? PRODUCTS : PRODUCTS.filter((p) => p.category === category)),
-    [category]
+    () => (category === 'all' ? products : products.filter((p) => p.category === category)),
+    [category, products]
   );
 
   const contentBottom = Math.max(insets.bottom, 16) + 24;
@@ -102,7 +103,7 @@ export function ProductsPage() {
             <LeafLogo size={70} color="#707973" />
           </RNView>
           <RNView pointerEvents="none" style={styles.headerCenter}>
-            <Text style={styles.brand}>PodoCare</Text>
+            <Text style={styles.brand}>Solodova Recovery System</Text>
           </RNView>
           <Pressable hitSlop={12} style={styles.iconBtn} onPress={() => {}}>
             <FontAwesome name="shopping-bag" size={18} color="#2D6A4F" />
@@ -130,7 +131,7 @@ export function ProductsPage() {
         <View style={styles.section} lightColor="transparent" darkColor="transparent">
           <Text style={styles.sectionTitle}>Категории</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
-            {CATEGORIES.map((c) => {
+            {categories.map((c) => {
               const active = c.id === category;
               return (
                 <Pressable key={c.id} onPress={() => setCategory(c.id)} style={({ pressed }) => [pressed && styles.pressed]}>
@@ -157,13 +158,6 @@ export function ProductsPage() {
             {featured.map((p) => (
               <Pressable key={p.id} onPress={() => {}} style={({ pressed }) => [pressed && styles.pressed]}>
                 <View style={styles.featuredCard} lightColor="#FFFFFF" darkColor="#0C1A14">
-                  {p.badge ? (
-                    <View style={styles.badge} lightColor="rgba(45,106,79,0.12)" darkColor="rgba(149,212,179,0.18)">
-                      <Text style={styles.badgeText} lightColor="#2D6A4F" darkColor="#95D4B3">
-                        {p.badge}
-                      </Text>
-                    </View>
-                  ) : null}
                   <RNView style={styles.featuredIconWrap}>
                     <FontAwesome name={iconForProduct(p)} size={22} color="#2D6A4F" />
                   </RNView>
@@ -175,7 +169,7 @@ export function ProductsPage() {
                         lightColor="rgba(112,121,115,1)"
                         darkColor="rgba(149,163,160,0.85)"
                       >
-                        {p.subtitle}
+                        {p.subtitle ?? 'Описание уточним на приёме'}
                       </Text>
                     </RNView>
                     <RNView style={styles.featuredFooter}>
@@ -193,8 +187,21 @@ export function ProductsPage() {
 
         <View style={styles.section} lightColor="transparent" darkColor="transparent">
           <Text style={styles.sectionTitle}>
-            {category === 'all' ? 'Все товары' : CATEGORIES.find((c) => c.id === category)?.label}
+            {category === 'all' ? 'Все товары' : categories.find((c) => c.id === category)?.label}
           </Text>
+          {loading ? (
+            <Text style={styles.listSub} lightColor="rgba(11,27,20,0.55)" darkColor="rgba(255,255,255,0.55)">
+              Загрузка...
+            </Text>
+          ) : error ? (
+            <Text style={styles.listSub} lightColor="rgba(11,27,20,0.55)" darkColor="rgba(255,255,255,0.55)">
+              {error}
+            </Text>
+          ) : catalog.length === 0 ? (
+            <Text style={styles.listSub} lightColor="rgba(11,27,20,0.55)" darkColor="rgba(255,255,255,0.55)">
+              Для выбранной категории пока нет товаров
+            </Text>
+          ) : null}
           <View style={styles.list} lightColor="transparent" darkColor="transparent">
             {catalog.map((p) => (
               <Pressable key={p.id} onPress={() => {}} style={({ pressed }) => [pressed && styles.pressed]}>
@@ -205,16 +212,9 @@ export function ProductsPage() {
                   <View style={styles.listMain} lightColor="transparent" darkColor="transparent">
                     <View style={styles.listTop} lightColor="transparent" darkColor="transparent">
                       <Text style={styles.listTitle}>{p.title}</Text>
-                      {p.badge ? (
-                        <View style={styles.listBadge} lightColor="rgba(149,163,160,0.16)" darkColor="rgba(255,255,255,0.10)">
-                          <Text style={styles.listBadgeText} lightColor="rgba(11,27,20,0.65)" darkColor="rgba(255,255,255,0.65)">
-                            {p.badge}
-                          </Text>
-                        </View>
-                      ) : null}
                     </View>
                     <Text style={styles.listSub} lightColor="rgba(11,27,20,0.55)" darkColor="rgba(255,255,255,0.55)">
-                      {p.subtitle}
+                      {p.subtitle ?? 'Описание уточним на приёме'}
                     </Text>
                     <Text style={styles.listPrice} lightColor="#2D6A4F" darkColor="#95D4B3">
                       {p.price}

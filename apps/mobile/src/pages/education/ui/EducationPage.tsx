@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
+import { Linking } from 'react-native';
 import {
   ActivityIndicator,
   Alert,
@@ -24,7 +25,11 @@ import {
   type FreeMaterialDto,
   type FreeMaterialKind,
   type MyCourseDto,
+  type ContentFeedItemDto,
+  clickContentItemCta,
   fetchEducationScreen,
+  fetchClientContentFeed,
+  saveContentItemProgress,
 } from '@/features/education/education-api';
 import { ApiError } from '@/shared/api/api-error';
 import { SafeAreaPadding } from '@/shared/ui/safe-area';
@@ -88,23 +93,68 @@ export function EducationPage() {
   const insets = useSafeAreaInsets();
   const [audience, setAudience] = useState<EducationAudience>('client');
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchEducationScreen>> | null>(null);
+  const [clientFeed, setClientFeed] = useState<ContentFeedItemDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [busyItemId, setBusyItemId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchEducationScreen(audience);
-      setData(res);
+      if (audience === 'client') {
+        const [screen, feed] = await Promise.all([fetchEducationScreen(audience), fetchClientContentFeed()]);
+        setData(screen);
+        setClientFeed(feed.items);
+      } else {
+        const res = await fetchEducationScreen(audience);
+        setData(res);
+        setClientFeed([]);
+      }
     } catch (e: unknown) {
       const message = e instanceof ApiError ? e.message : 'Не удалось загрузить раздел';
       setError(message);
       setData(null);
+      setClientFeed([]);
     } finally {
       setLoading(false);
     }
   }, [audience]);
+
+  const handleProgress = useCallback(
+    async (item: ContentFeedItemDto, percent: number) => {
+      setBusyItemId(item.id);
+      try {
+        await saveContentItemProgress(item.id, { percent });
+        await load();
+      } catch (e: unknown) {
+        const message = e instanceof ApiError ? e.message : 'Не удалось сохранить прогресс';
+        Alert.alert('Ошибка', message);
+      } finally {
+        setBusyItemId(null);
+      }
+    },
+    [load],
+  );
+
+  const handleCta = useCallback(async (item: ContentFeedItemDto) => {
+    const cta = item.ctas[0];
+    if (!cta) return;
+    setBusyItemId(item.id);
+    try {
+      await clickContentItemCta(item.id, cta.id);
+      if (cta.target === 'EXTERNAL_URL' && cta.targetExternalUrl) {
+        await Linking.openURL(cta.targetExternalUrl);
+      } else {
+        comingSoon(cta.label);
+      }
+    } catch (e: unknown) {
+      const message = e instanceof ApiError ? e.message : 'Не удалось выполнить CTA';
+      Alert.alert('Ошибка', message);
+    } finally {
+      setBusyItemId(null);
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -200,6 +250,25 @@ export function EducationPage() {
 
         {data ? (
           <>
+            {audience === 'client' ? (
+              <Section title="Лента контента">
+                {clientFeed.length === 0 ? (
+                  <Text style={styles.emptyHint} lightColor={ON_SURFACE_VARIANT} darkColor="rgba(255,255,255,0.5)">
+                    Пока нет опубликованных материалов.
+                  </Text>
+                ) : (
+                  clientFeed.map((item) => (
+                    <ClientContentCard
+                      key={item.id}
+                      item={item}
+                      busy={busyItemId === item.id}
+                      onProgress={handleProgress}
+                      onCta={handleCta}
+                    />
+                  ))
+                )}
+              </Section>
+            ) : null}
             <Section title="Мои курсы">
               {data.myCourses.length === 0 ? (
                 <Text style={styles.emptyHint} lightColor={ON_SURFACE_VARIANT} darkColor="rgba(255,255,255,0.5)">
@@ -394,6 +463,90 @@ function FeaturedCard({ item }: { item: FeaturedDto }) {
             <Text style={styles.ctaText}>{cta}</Text>
           </LinearGradient>
         </Pressable>
+      </RNView>
+    </View>
+  );
+}
+
+function ClientContentCard(props: {
+  item: ContentFeedItemDto;
+  busy: boolean;
+  onProgress: (item: ContentFeedItemDto, percent: number) => void;
+  onCta: (item: ContentFeedItemDto) => void;
+}) {
+  const percent = Math.min(100, Math.max(0, props.item.progress.percent));
+  const cta = props.item.ctas[0];
+  const locked = props.item.paywall.isLocked;
+
+  return (
+    <View style={styles.courseCard} lightColor="#FFFFFF" darkColor="#0C1A14">
+      <CoverImage uri={props.item.coverImageUrl} style={styles.courseCover} accessibilityLabel={props.item.title} />
+      <RNView style={styles.courseBody}>
+        <RNView style={styles.courseTop}>
+          <RNView style={styles.badgeCourse}>
+            <Text style={styles.badgeCourseText} lightColor={PRIMARY} darkColor="#95D4B3">
+              {props.item.format}
+            </Text>
+          </RNView>
+          <Text style={styles.courseTitle} lightColor={ON_CARD_TITLE} darkColor="#FFFFFF" numberOfLines={2}>
+            {props.item.title}
+          </Text>
+        </RNView>
+
+        <RNView style={styles.progressBlock}>
+          <RNView style={styles.progressLabels}>
+            <Text style={styles.progressMeta} lightColor={ON_SURFACE_VARIANT} darkColor="rgba(255,255,255,0.6)">
+              Прогресс: {percent}%
+            </Text>
+            <Text style={styles.progressMeta} lightColor={ON_SURFACE_VARIANT} darkColor="rgba(255,255,255,0.6)">
+              {locked ? 'Доступ закрыт' : props.item.paywall.mode}
+            </Text>
+          </RNView>
+          <RNView style={styles.track}>
+            <LinearGradient
+              colors={[PRIMARY, PRIMARY_CONTAINER]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={[styles.trackFill, { width: `${percent}%` }]}
+            />
+          </RNView>
+        </RNView>
+
+        {!locked ? (
+          <RNView style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+            <Pressable
+              onPress={() => props.onProgress(props.item, Math.max(percent, 50))}
+              style={({ pressed }) => [styles.segmentBtn, { flex: 1 }, pressed && styles.pressed]}
+              disabled={props.busy}
+            >
+              <Text style={styles.segmentLabel} lightColor={PRIMARY} darkColor="#95D4B3">
+                50%
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => props.onProgress(props.item, 100)}
+              style={({ pressed }) => [styles.segmentBtn, { flex: 1 }, pressed && styles.pressed]}
+              disabled={props.busy}
+            >
+              <Text style={styles.segmentLabel} lightColor={PRIMARY} darkColor="#95D4B3">
+                Завершить
+              </Text>
+            </Pressable>
+          </RNView>
+        ) : null}
+
+        {cta && !locked ? (
+          <Pressable onPress={() => props.onCta(props.item)} style={({ pressed }) => [styles.ctaOuter, pressed && styles.pressed]}>
+            <LinearGradient
+              colors={[PRIMARY, PRIMARY_CONTAINER]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={styles.ctaGradient}
+            >
+              <Text style={styles.ctaText}>{cta.label}</Text>
+            </LinearGradient>
+          </Pressable>
+        ) : null}
       </RNView>
     </View>
   );

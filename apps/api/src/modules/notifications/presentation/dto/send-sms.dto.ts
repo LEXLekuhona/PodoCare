@@ -1,4 +1,4 @@
-import { NotificationTemplateKey, NotificationType } from '@podocare/shared-types';
+import { NotificationTemplateKey, NotificationType } from '@srs/shared-types';
 import { IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 export class SendSmsDto {

@@ -1,12 +1,37 @@
-import type { INestApplication } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
-import { NotificationChannel, NotificationTemplateKey, UserRole } from '@podocare/shared-types';
-import { Queue } from 'bullmq';
+import { NotificationChannel, NotificationTemplateKey, UserRole } from '@srs/shared-types';
+import argon2 from 'argon2';
 import { addMinutes } from 'date-fns';
 import request from 'supertest';
 
-import { PrismaService } from '../../src/infrastructure/prisma/prisma.service';
 import { buildTestApp } from '../helpers/build-test-app';
+
+import type { PrismaService } from '../../src/infrastructure/prisma/prisma.service';
+import type { INestApplication } from '@nestjs/common';
+import type { Queue } from 'bullmq';
+
+async function loginStaff(app: INestApplication, email: string, password: string): Promise<string> {
+  const login = await request(app.getHttpServer()).post('/api/v1/auth/staff/login').send({
+    email,
+    password,
+    deviceType: 'admin_web',
+  });
+  expect(login.status).toBe(201);
+  return login.body.tokens.accessToken as string;
+}
+
+async function loginClientByOtp(app: INestApplication, phone: string): Promise<string> {
+  const requestOtp = await request(app.getHttpServer()).post('/api/v1/auth/otp/request').send({ phone });
+  expect(requestOtp.status).toBe(201);
+
+  const verifyOtp = await request(app.getHttpServer()).post('/api/v1/auth/otp/verify').send({
+    phone,
+    code: requestOtp.body.debugCode,
+    deviceType: 'mobile_android',
+  });
+  expect(verifyOtp.status).toBe(201);
+  return verifyOtp.body.tokens.accessToken as string;
+}
 
 async function waitFor<T>(
   probe: () => Promise<T>,
@@ -14,7 +39,7 @@ async function waitFor<T>(
   timeoutMs = 6000,
 ): Promise<T> {
   const started = Date.now();
-  // eslint-disable-next-line no-constant-condition
+   
   while (true) {
     const value = await probe();
     if (predicate(value)) {
@@ -60,6 +85,18 @@ describe('Appointments (e2e)', () => {
         openingHours: {},
       },
     });
+    const adminPassword = 'StrongPass123!';
+    const admin = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.StudioAdmin,
+        phone: '+79990010099',
+        email: 'studio-admin-c@solodova-recovery.local',
+        passwordHash: await argon2.hash(adminPassword),
+        firstName: 'Studio',
+        lastName: 'Admin',
+      },
+    });
     const specialistUser = await prisma.user.create({
       data: {
         studioId: studio.id,
@@ -72,6 +109,12 @@ describe('Appointments (e2e)', () => {
     const specialist = await prisma.specialistProfile.create({
       data: {
         userId: specialistUser.id,
+        studioId: studio.id,
+      },
+    });
+    await prisma.specialistStudio.create({
+      data: {
+        specialistProfileId: specialist.id,
         studioId: studio.id,
       },
     });
@@ -103,8 +146,11 @@ describe('Appointments (e2e)', () => {
       },
     });
 
+    const staffAccessToken = await loginStaff(app, admin.email!, adminPassword);
+
     const create = await request(app.getHttpServer())
       .post('/api/v1/appointments')
+      .set('Authorization', `Bearer ${staffAccessToken}`)
       .send({
         studioId: studio.id,
         specialistId: specialist.id,
@@ -117,6 +163,7 @@ describe('Appointments (e2e)', () => {
 
     const overlap = await request(app.getHttpServer())
       .post('/api/v1/appointments')
+      .set('Authorization', `Bearer ${staffAccessToken}`)
       .send({
         studioId: studio.id,
         specialistId: specialist.id,
@@ -128,6 +175,7 @@ describe('Appointments (e2e)', () => {
 
     const confirm = await request(app.getHttpServer())
       .patch(`/api/v1/appointments/${create.body.id}/confirm`)
+      .set('Authorization', `Bearer ${staffAccessToken}`)
       .send({});
     expect(confirm.status).toBe(200);
     expect(confirm.body.status).toBe('CONFIRMED');
@@ -154,6 +202,7 @@ describe('Appointments (e2e)', () => {
 
     const list = await request(app.getHttpServer())
       .get('/api/v1/appointments')
+      .set('Authorization', `Bearer ${staffAccessToken}`)
       .query({
         studioId: studio.id,
         specialistId: specialist.id,
@@ -175,6 +224,18 @@ describe('Appointments (e2e)', () => {
         openingHours: {},
       },
     });
+    const adminPassword = 'StrongPass123!';
+    const admin = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.StudioAdmin,
+        phone: '+79990020099',
+        email: 'studio-admin-d@solodova-recovery.local',
+        passwordHash: await argon2.hash(adminPassword),
+        firstName: 'Studio',
+        lastName: 'Admin',
+      },
+    });
     const specialistUser = await prisma.user.create({
       data: {
         studioId: studio.id,
@@ -187,6 +248,12 @@ describe('Appointments (e2e)', () => {
     const specialist = await prisma.specialistProfile.create({
       data: {
         userId: specialistUser.id,
+        studioId: studio.id,
+      },
+    });
+    await prisma.specialistStudio.create({
+      data: {
+        specialistProfileId: specialist.id,
         studioId: studio.id,
       },
     });
@@ -247,8 +314,11 @@ describe('Appointments (e2e)', () => {
       },
     });
 
+    const staffAccessToken = await loginStaff(app, admin.email!, adminPassword);
+
     const create = await request(app.getHttpServer())
       .post('/api/v1/appointments')
+      .set('Authorization', `Bearer ${staffAccessToken}`)
       .send({
         studioId: studio.id,
         specialistId: specialist.id,
@@ -276,6 +346,7 @@ describe('Appointments (e2e)', () => {
     const newStart = addMinutes(slotStart, 30);
     const reschedule = await request(app.getHttpServer())
       .patch(`/api/v1/appointments/${create.body.id}/reschedule`)
+      .set('Authorization', `Bearer ${staffAccessToken}`)
       .send({ startsAt: newStart.toISOString(), reason: 'Перенос теста' });
     expect(reschedule.status).toBe(200);
 
@@ -293,6 +364,7 @@ describe('Appointments (e2e)', () => {
 
     const cancel = await request(app.getHttpServer())
       .patch(`/api/v1/appointments/${create.body.id}/cancel-by-studio`)
+      .set('Authorization', `Bearer ${staffAccessToken}`)
       .send({ reason: 'Закрытие смены' });
     expect(cancel.status).toBe(200);
     expect(cancel.body.status).toBe('CANCELLED_BY_STUDIO');
@@ -322,6 +394,18 @@ describe('Appointments (e2e)', () => {
         openingHours: {},
       },
     });
+    const adminPassword = 'StrongPass123!';
+    const admin = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.StudioAdmin,
+        phone: '+79990030099',
+        email: 'studio-admin-e@solodova-recovery.local',
+        passwordHash: await argon2.hash(adminPassword),
+        firstName: 'Studio',
+        lastName: 'Admin',
+      },
+    });
     const specialistUser = await prisma.user.create({
       data: {
         studioId: studio.id,
@@ -334,6 +418,12 @@ describe('Appointments (e2e)', () => {
     const specialist = await prisma.specialistProfile.create({
       data: {
         userId: specialistUser.id,
+        studioId: studio.id,
+      },
+    });
+    await prisma.specialistStudio.create({
+      data: {
+        specialistProfileId: specialist.id,
         studioId: studio.id,
       },
     });
@@ -367,6 +457,7 @@ describe('Appointments (e2e)', () => {
 
     const create = await request(app.getHttpServer())
       .post('/api/v1/appointments')
+      .set('Authorization', `Bearer ${await loginStaff(app, admin.email!, adminPassword)}`)
       .send({
         studioId: studio.id,
         specialistId: specialist.id,
@@ -385,6 +476,178 @@ describe('Appointments (e2e)', () => {
     expect(updated?.status).toBe('IN_PROGRESS');
   });
 
+  it('enforces auth contract on protected endpoints (401/403)', async () => {
+    const network = await prisma.network.create({
+      data: { name: 'Net Security', slug: 'net-security' },
+    });
+    const studio = await prisma.studio.create({
+      data: {
+        networkId: network.id,
+        name: 'Studio Security',
+        address: 'Address',
+        city: 'Moscow',
+        openingHours: {},
+      },
+    });
+    const adminPassword = 'StrongPass123!';
+    const admin = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.StudioAdmin,
+        phone: '+79990035099',
+        email: 'studio-admin-security@solodova-recovery.local',
+        passwordHash: await argon2.hash(adminPassword),
+        firstName: 'Studio',
+        lastName: 'Admin',
+      },
+    });
+    const specialistUser = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.Specialist,
+        phone: '+79990035001',
+        firstName: 'Spec',
+        lastName: 'Security',
+      },
+    });
+    const specialist = await prisma.specialistProfile.create({
+      data: {
+        userId: specialistUser.id,
+        studioId: studio.id,
+      },
+    });
+    await prisma.specialistStudio.create({
+      data: {
+        specialistProfileId: specialist.id,
+        studioId: studio.id,
+      },
+    });
+    const service = await prisma.service.create({
+      data: {
+        studioId: studio.id,
+        name: 'Security service',
+        durationMinutes: 30,
+        priceMinor: 150000,
+      },
+    });
+    const client = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.Client,
+        phone: '+79990035002',
+        firstName: 'Client',
+        lastName: 'Security',
+      },
+    });
+    const startsAt = addMinutes(new Date(), 180);
+    await prisma.specialistShift.create({
+      data: {
+        specialistId: specialist.id,
+        studioId: studio.id,
+        startsAt: addMinutes(startsAt, -60),
+        endsAt: addMinutes(startsAt, 120),
+      },
+    });
+
+    const noAuthCreate = await request(app.getHttpServer()).post('/api/v1/appointments').send({
+      studioId: studio.id,
+      specialistId: specialist.id,
+      serviceId: service.id,
+      clientUserId: client.id,
+      startsAt: startsAt.toISOString(),
+    });
+    expect(noAuthCreate.status).toBe(401);
+
+    const clientAccessToken = await loginClientByOtp(app, client.phone);
+    const forbiddenCreate = await request(app.getHttpServer())
+      .post('/api/v1/appointments')
+      .set('Authorization', `Bearer ${clientAccessToken}`)
+      .send({
+        studioId: studio.id,
+        specialistId: specialist.id,
+        serviceId: service.id,
+        clientUserId: client.id,
+        startsAt: startsAt.toISOString(),
+      });
+    expect(forbiddenCreate.status).toBe(403);
+
+    const staffAccessToken = await loginStaff(app, admin.email!, adminPassword);
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/appointments')
+      .set('Authorization', `Bearer ${staffAccessToken}`)
+      .send({
+        studioId: studio.id,
+        specialistId: specialist.id,
+        serviceId: service.id,
+        clientUserId: client.id,
+        startsAt: startsAt.toISOString(),
+      });
+    expect(created.status).toBe(201);
+
+    const forbiddenClientCancelByStaff = await request(app.getHttpServer())
+      .patch(`/api/v1/appointments/${created.body.id}/cancel-by-client`)
+      .set('Authorization', `Bearer ${staffAccessToken}`)
+      .send({ reason: 'forbidden' });
+    expect(forbiddenClientCancelByStaff.status).toBe(403);
+
+    const noAuthList = await request(app.getHttpServer()).get('/api/v1/appointments');
+    expect(noAuthList.status).toBe(401);
+
+    const noAuthConfirm = await request(app.getHttpServer()).patch(`/api/v1/appointments/${created.body.id}/confirm`);
+    expect(noAuthConfirm.status).toBe(401);
+
+    const noAuthReschedule = await request(app.getHttpServer())
+      .patch(`/api/v1/appointments/${created.body.id}/reschedule`)
+      .send({ startsAt: addMinutes(startsAt, 10).toISOString(), reason: 'no auth' });
+    expect(noAuthReschedule.status).toBe(401);
+
+    const noAuthCancelByStudio = await request(app.getHttpServer())
+      .patch(`/api/v1/appointments/${created.body.id}/cancel-by-studio`)
+      .send({ reason: 'no auth' });
+    expect(noAuthCancelByStudio.status).toBe(401);
+
+    const noAuthCancelByClient = await request(app.getHttpServer())
+      .patch(`/api/v1/appointments/${created.body.id}/cancel-by-client`)
+      .send({ reason: 'no auth' });
+    expect(noAuthCancelByClient.status).toBe(401);
+
+    const noAuthNext = await request(app.getHttpServer()).get('/api/v1/appointments/next');
+    expect(noAuthNext.status).toBe(401);
+
+    const noAuthBookingSlots = await request(app.getHttpServer())
+      .get('/api/v1/appointments/booking-slots')
+      .query({
+        studioId: studio.id,
+        serviceId: service.id,
+        specialistId: specialist.id,
+        fromDate: new Date().toISOString().slice(0, 10),
+      });
+    expect(noAuthBookingSlots.status).toBe(401);
+
+    const forbiddenList = await request(app.getHttpServer())
+      .get('/api/v1/appointments')
+      .set('Authorization', `Bearer ${clientAccessToken}`);
+    expect(forbiddenList.status).toBe(403);
+
+    const forbiddenConfirm = await request(app.getHttpServer())
+      .patch(`/api/v1/appointments/${created.body.id}/confirm`)
+      .set('Authorization', `Bearer ${clientAccessToken}`)
+      .send({});
+    expect(forbiddenConfirm.status).toBe(403);
+
+    const forbiddenReschedule = await request(app.getHttpServer())
+      .patch(`/api/v1/appointments/${created.body.id}/reschedule`)
+      .set('Authorization', `Bearer ${clientAccessToken}`)
+      .send({ startsAt: addMinutes(startsAt, 15).toISOString(), reason: 'forbidden' });
+    expect(forbiddenReschedule.status).toBe(403);
+
+    const forbiddenCancelByStudio = await request(app.getHttpServer())
+      .patch(`/api/v1/appointments/${created.body.id}/cancel-by-studio`)
+      .set('Authorization', `Bearer ${clientAccessToken}`)
+      .send({ reason: 'forbidden' });
+    expect(forbiddenCancelByStudio.status).toBe(403);
+  });
+
   it('rejects appointment in the past', async () => {
     const network = await prisma.network.create({
       data: { name: 'Net Past', slug: 'net-past' },
@@ -396,6 +659,18 @@ describe('Appointments (e2e)', () => {
         address: 'Address',
         city: 'Moscow',
         openingHours: {},
+      },
+    });
+    const adminPassword = 'StrongPass123!';
+    const admin = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.StudioAdmin,
+        phone: '+79990040099',
+        email: 'studio-admin-past@solodova-recovery.local',
+        passwordHash: await argon2.hash(adminPassword),
+        firstName: 'Studio',
+        lastName: 'Admin',
       },
     });
     const specialistUser = await prisma.user.create({
@@ -410,6 +685,12 @@ describe('Appointments (e2e)', () => {
     const specialist = await prisma.specialistProfile.create({
       data: {
         userId: specialistUser.id,
+        studioId: studio.id,
+      },
+    });
+    await prisma.specialistStudio.create({
+      data: {
+        specialistProfileId: specialist.id,
         studioId: studio.id,
       },
     });
@@ -442,6 +723,7 @@ describe('Appointments (e2e)', () => {
 
     const create = await request(app.getHttpServer())
       .post('/api/v1/appointments')
+      .set('Authorization', `Bearer ${await loginStaff(app, admin.email!, adminPassword)}`)
       .send({
         studioId: studio.id,
         specialistId: specialist.id,

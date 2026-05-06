@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { CurrentUser } from '../../auth/infrastructure/current-user.decorator';
@@ -19,6 +19,29 @@ export class MeController {
   @ApiOperation({ summary: 'Текущий пользователь.' })
   getMe(@CurrentUser() user: JwtAccessPayload) {
     return this.meService.get(user.sub);
+  }
+
+  @Get('medical-card')
+  @ApiOperation({ summary: 'Сводка медкарты текущего пользователя.' })
+  getMedicalCard(@CurrentUser() user: JwtAccessPayload) {
+    return this.meService.getMedicalCard(user.sub);
+  }
+
+  @Get('treatment-plans')
+  @ApiOperation({ summary: 'Планы лечения текущего клиента.' })
+  getTreatmentPlans(@CurrentUser() user: JwtAccessPayload) {
+    return this.meService.getTreatmentPlans(user.sub);
+  }
+
+  @Patch('medical-card')
+  @ApiOperation({
+    summary:
+      'Изменение медкарты из клиентского приложения запрещено. Заполнение — специалистом, редактирование — в админ-панели.',
+  })
+  updateMedicalCardForbidden() {
+    throw new ForbiddenException(
+      'Изменение медкарты недоступно: клиент может только просматривать карту в мобильном приложении.',
+    );
   }
 
   @Patch()

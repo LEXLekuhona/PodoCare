@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { UserRole } from '@podocare/shared-types';
+import { UserRole } from '@srs/shared-types';
 import { Prisma } from '@prisma/client';
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- токен Nest DI
@@ -13,11 +13,13 @@ import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 import type { CreateFaqItemDto } from '../presentation/dto/create-faq-item.dto';
 import type { CreateHealthConcernDto } from '../presentation/dto/create-health-concern.dto';
+import type { CreateStudioDirectionDto } from '../presentation/dto/create-studio-direction.dto';
 import type { CreateNetworkDto } from '../presentation/dto/create-network.dto';
 import type { CreateStudioDto } from '../presentation/dto/create-studio.dto';
 import type { ListStudiosQueryDto } from '../presentation/dto/list-studios.query.dto';
 import type { UpdateFaqItemDto } from '../presentation/dto/update-faq-item.dto';
 import type { UpdateHealthConcernDto } from '../presentation/dto/update-health-concern.dto';
+import type { UpdateStudioDirectionDto } from '../presentation/dto/update-studio-direction.dto';
 import type { UpdateNetworkDto } from '../presentation/dto/update-network.dto';
 import type { UpdateStudioDto } from '../presentation/dto/update-studio.dto';
 
@@ -86,6 +88,13 @@ export class AdminCatalogService {
           slug: dto.slug,
           description: dto.description ?? null,
           logoUrl: dto.logoUrl ?? null,
+          physicalGoodCategories: {
+            create: [
+              { slug: 'care', name: 'Уход', sortOrder: 0, isActive: true },
+              { slug: 'tools', name: 'Инструменты', sortOrder: 10, isActive: true },
+              { slug: 'creams', name: 'Кремы', sortOrder: 20, isActive: true },
+            ],
+          },
         },
       });
     } catch (e) {
@@ -312,6 +321,74 @@ export class AdminCatalogService {
     this.assertElevatedCatalog(user);
     await this.getHealthConcern(id);
     await this.prisma.healthConcern.delete({ where: { id } });
+    return { ok: true };
+  }
+
+  // --- Studio directions (главный экран приложения) ---
+
+  async listStudioDirections() {
+    return this.prisma.studioDirection.findMany({
+      orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
+    });
+  }
+
+  async getStudioDirection(id: string) {
+    const row = await this.prisma.studioDirection.findUnique({ where: { id } });
+    if (!row) throw new NotFoundException(`Направление ${id} не найдено`);
+    return row;
+  }
+
+  async createStudioDirection(user: JwtAccessPayload, dto: CreateStudioDirectionDto) {
+    this.assertElevatedCatalog(user);
+    try {
+      return await this.prisma.studioDirection.create({
+        data: {
+          slug: dto.slug,
+          title: dto.title,
+          description: dto.description ?? null,
+          iconKey: dto.iconKey,
+          sortOrder: dto.sortOrder ?? 0,
+          ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+        },
+      });
+    } catch (e) {
+      if (isUniqueViolation(e)) {
+        throw new ConflictException('Запись с таким slug уже есть');
+      }
+      throw e;
+    }
+  }
+
+  async updateStudioDirection(user: JwtAccessPayload, id: string, dto: UpdateStudioDirectionDto) {
+    this.assertElevatedCatalog(user);
+    await this.getStudioDirection(id);
+    try {
+      return await this.prisma.studioDirection.update({
+        where: { id },
+        data: {
+          ...(dto.slug !== undefined && { slug: dto.slug }),
+          ...(dto.title !== undefined && { title: dto.title }),
+          ...(dto.description !== undefined && { description: dto.description }),
+          ...(dto.iconKey !== undefined && { iconKey: dto.iconKey }),
+          ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
+          ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+        },
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+        throw new NotFoundException(`Направление ${id} не найдено`);
+      }
+      if (isUniqueViolation(e)) {
+        throw new ConflictException('Запись с таким slug уже есть');
+      }
+      throw e;
+    }
+  }
+
+  async deleteStudioDirection(user: JwtAccessPayload, id: string) {
+    this.assertElevatedCatalog(user);
+    await this.getStudioDirection(id);
+    await this.prisma.studioDirection.delete({ where: { id } });
     return { ok: true };
   }
 

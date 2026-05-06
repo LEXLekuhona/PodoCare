@@ -1,6 +1,6 @@
-import type { UserRole } from '@podocare/shared-types';
+import type { UserRole } from '@srs/shared-types';
 
-const PREFIX = 'podocare_admin_';
+const PREFIX = 'srs_admin_';
 
 const KEYS = {
   access: `${PREFIX}access`,

@@ -1,4 +1,4 @@
-import { UserRole } from '@podocare/shared-types';
+import { UserRole } from '@srs/shared-types';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {

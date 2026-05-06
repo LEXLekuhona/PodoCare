@@ -1,4 +1,4 @@
-import { UserRole } from '@podocare/shared-types';
+import { UserRole } from '@srs/shared-types';
 import { NavLink, Outlet } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthContext';
@@ -28,19 +28,30 @@ export function AppLayout() {
   return (
     <div className="layout">
       <aside className="sidebar">
-        <strong>PodoCare</strong>
-        <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: '0.35rem' }}>
-          Админка
-        </p>
-        <nav style={{ marginTop: '1.25rem' }}>
+        <div>
+          <strong style={{ fontSize: '1.08rem' }}>Solodova Recovery System</strong>
+          <p style={{ color: 'var(--muted)', fontSize: '0.85rem', margin: '0.35rem 0 0' }}>
+            Админ-панель сети и студий
+          </p>
+        </div>
+
+        <nav>
+          <div className="nav-caption">Основное</div>
           <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>
             Обзор
           </NavLink>
+          <div className="nav-caption">Каталог</div>
           <NavLink to="/catalog/networks" className={({ isActive }) => (isActive ? 'active' : '')}>
             Сети
           </NavLink>
           <NavLink to="/catalog/studios" className={({ isActive }) => (isActive ? 'active' : '')}>
             Студии
+          </NavLink>
+          <NavLink to="/catalog/services" className={({ isActive }) => (isActive ? 'active' : '')}>
+            Услуги
+          </NavLink>
+          <NavLink to="/catalog/products" className={({ isActive }) => (isActive ? 'active' : '')}>
+            Товары
           </NavLink>
           <NavLink
             to="/catalog/specialists"
@@ -55,13 +66,34 @@ export function AppLayout() {
             to="/catalog/health-concerns"
             className={({ isActive }) => (isActive ? 'active' : '')}
           >
-            Жалобы
+            Что вас беспокоит
+          </NavLink>
+          <NavLink
+            to="/catalog/studio-directions"
+            className={({ isActive }) => (isActive ? 'active' : '')}
+          >
+            Направления студии
           </NavLink>
           <NavLink to="/catalog/faq" className={({ isActive }) => (isActive ? 'active' : '')}>
             FAQ
           </NavLink>
+          <div className="nav-caption">Обучение</div>
+          <NavLink to="/education/content" className={({ isActive }) => (isActive ? 'active' : '')}>
+            Контент и воронка
+          </NavLink>
+          <NavLink to="/education/quiz" className={({ isActive }) => (isActive ? 'active' : '')}>
+            Диагностический квиз
+          </NavLink>
+          <div className="nav-caption">Клиника</div>
+          <NavLink
+            to="/operations/treatment-flow"
+            className={({ isActive }) => (isActive ? 'active' : '')}
+          >
+            Протоколы и планы
+          </NavLink>
         </nav>
-        <div style={{ marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
+
+        <div className="sidebar-foot">
           <div className="badge" style={{ marginBottom: '0.5rem' }}>
             {user ? roleLabel(user.role) : ''}
           </div>

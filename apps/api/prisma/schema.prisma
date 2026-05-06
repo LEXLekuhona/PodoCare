@@ -1,5 +1,5 @@
 // =============================================================================
-// PodoCare — Prisma schema (v2, content-first).
+// Solodova Recovery System — Prisma schema (v2, content-first).
 //
 // Принципы:
 // • Мульти-студийная модель: операционные сущности (услуги, записи, мастера)
@@ -240,6 +240,15 @@ enum TreatmentPlanStatus {
   @@map("treatment_plan_status")
 }
 
+enum TreatmentPlanStepStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  SKIPPED
+
+  @@map("treatment_plan_step_status")
+}
+
 enum ProgramInquiryStatus {
   NEW
   IN_PROGRESS
@@ -423,6 +432,7 @@ model Network {
   contentSeries         ContentSeries[]
   contentItems          ContentItem[]
   programs              Program[]
+  physicalGoodCategories PhysicalGoodCategory[]
   diagnosticQuizzes     DiagnosticQuiz[]
   physicalGoods         PhysicalGood[]
   programInquiries      ProgramInquiry[]
@@ -537,7 +547,10 @@ model User {
   quizResponses         DiagnosticQuizResponse[]
   treatmentPlansClient  TreatmentPlan[]       @relation("TreatmentPlanClient")
   treatmentPlansAuthor  TreatmentPlan[]       @relation("TreatmentPlanAuthor")
+  treatmentPlansUpdated TreatmentPlan[]       @relation("TreatmentPlanUpdatedBy")
+  treatmentPlanRevisionsUpdated TreatmentPlanRevision[] @relation("TreatmentPlanRevisionUpdatedBy")
   visitProtocolsAuthor  AppointmentProtocol[] @relation("ProtocolAuthor")
+  visitProtocolsUpdated AppointmentProtocol[] @relation("ProtocolUpdatedBy")
   orders                Order[]
   programInquiries      ProgramInquiry[]      @relation("ProgramInquiryClient")
   programInquiriesAssigned ProgramInquiry[]   @relation("ProgramInquiryAssignee")
@@ -576,6 +589,7 @@ model SpecialistProfile {
   studio       Studio              @relation(fields: [studioId], references: [id], onDelete: Restrict)
   studios      SpecialistStudio[]
   services     SpecialistService[]
+  categories   SpecialistCategory[]
   shifts       SpecialistShift[]
   appointments Appointment[]
 
@@ -674,11 +688,31 @@ model OtpCode {
 // УСЛУГИ, РАСПИСАНИЕ, ЗАПИСИ
 // =============================================================================
 
+/// Направление деятельности / категория услуг (Подология, Остеопатия, Массаж и т.д.)
+model ServiceCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String   @unique
+  description String?
+  color       String?  /// HEX цвет для UI
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  services     Service[]
+  specialists  SpecialistCategory[]
+
+  @@index([isActive, sortOrder])
+  @@map("service_categories")
+}
+
 /// Услуга (процедура) в студии. Это бизнес-сущность расписания.
 /// Также может выступать целью CTA из контента (ContentCta.targetServiceId).
 model Service {
   id                   String   @id @default(uuid()) @db.Uuid
   studioId             String   @map("studio_id") @db.Uuid
+  categoryId           String?  @map("category_id") @db.Uuid
   name                 String
   description          String?
   durationMinutes      Int      @map("duration_minutes")
@@ -694,12 +728,14 @@ model Service {
   updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   studio       Studio              @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  category     ServiceCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   specialists  SpecialistService[]
   appointments Appointment[]
   promoCodes   PromoCode[]         @relation("PromoCodeService")
   ctas         ContentCta[]        @relation("CtaService")
 
   @@index([studioId, isActive])
+  @@index([categoryId])
   @@map("services")
 }
 
@@ -712,6 +748,18 @@ model SpecialistService {
 
   @@id([specialistId, serviceId])
   @@map("specialist_services")
+}
+
+/// Связь специалиста с направлениями деятельности (категориями)
+model SpecialistCategory {
+  specialistId String @map("specialist_id") @db.Uuid
+  categoryId   String @map("category_id") @db.Uuid
+
+  specialist SpecialistProfile @relation(fields: [specialistId], references: [id], onDelete: Cascade)
+  category   ServiceCategory   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([specialistId, categoryId])
+  @@map("specialist_categories")
 }
 
 model SpecialistShift {
@@ -814,6 +862,7 @@ model AppointmentProtocol {
   id            String   @id @default(uuid()) @db.Uuid
   appointmentId String   @unique @map("appointment_id") @db.Uuid
   authorUserId  String   @map("author_user_id") @db.Uuid
+  updatedByUserId String? @map("updated_by_user_id") @db.Uuid
   /// Выполненные процедуры — массив тегов/названий для поиска.
   proceduresDone String[] @default([]) @map("procedures_done")
   /// Диагноз / предварительные выводы мастера.
@@ -824,11 +873,14 @@ model AppointmentProtocol {
   internalNote  String?  @map("internal_note")
   /// Должен ли клиент видеть этот протокол целиком в своём кабинете.
   clientVisible Boolean  @default(false) @map("client_visible")
+  updateReason   String? @map("update_reason")
+  updateComment  String? @map("update_comment")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   author      User        @relation("ProtocolAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  updatedBy   User?       @relation("ProtocolUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
 
   @@index([authorUserId])
   @@map("appointment_protocols")
@@ -840,6 +892,7 @@ model TreatmentPlan {
   id            String              @id @default(uuid()) @db.Uuid
   clientUserId  String              @map("client_user_id") @db.Uuid
   authorUserId  String              @map("author_user_id") @db.Uuid
+  updatedByUserId String?           @map("updated_by_user_id") @db.Uuid
   studioId      String              @map("studio_id") @db.Uuid
   /// Связан с конкретным визитом (если был создан после приёма).
   appointmentId String?             @map("appointment_id") @db.Uuid
@@ -852,17 +905,57 @@ model TreatmentPlan {
   validFrom     DateTime            @map("valid_from") @db.Timestamptz(6)
   validUntil    DateTime?           @map("valid_until") @db.Timestamptz(6)
   status        TreatmentPlanStatus @default(ACTIVE)
+  updateComment String?             @map("update_comment")
   createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   client      User         @relation("TreatmentPlanClient", fields: [clientUserId], references: [id], onDelete: Cascade)
   author      User         @relation("TreatmentPlanAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  updatedBy   User?        @relation("TreatmentPlanUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   studio      Studio       @relation(fields: [studioId], references: [id], onDelete: Restrict)
   appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  planSteps   TreatmentPlanStep[]
+  revisions   TreatmentPlanRevision[]
 
   @@index([clientUserId, status])
   @@index([studioId])
   @@map("treatment_plans")
+}
+
+model TreatmentPlanStep {
+  id              String                  @id @default(uuid()) @db.Uuid
+  treatmentPlanId String                  @map("treatment_plan_id") @db.Uuid
+  sortOrder       Int                     @default(0) @map("sort_order")
+  title           String
+  recommendation  String?
+  dueDate         DateTime?               @map("due_date") @db.Timestamptz(6)
+  status          TreatmentPlanStepStatus @default(PENDING)
+  completedAt     DateTime?               @map("completed_at") @db.Timestamptz(6)
+  createdAt       DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  treatmentPlan TreatmentPlan @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade)
+
+  @@index([treatmentPlanId, sortOrder])
+  @@index([status])
+  @@map("treatment_plan_steps")
+}
+
+model TreatmentPlanRevision {
+  id              String   @id @default(uuid()) @db.Uuid
+  treatmentPlanId String   @map("treatment_plan_id") @db.Uuid
+  updatedByUserId String?  @map("updated_by_user_id") @db.Uuid
+  reason          String?
+  comment         String?
+  snapshot        Json
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  treatmentPlan TreatmentPlan @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade)
+  updatedBy     User?         @relation("TreatmentPlanRevisionUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([treatmentPlanId, createdAt])
+  @@index([updatedByUserId])
+  @@map("treatment_plan_revisions")
 }
 
 /// Справочник "что беспокоит" — выбирается клиентом при создании записи или в квизе.
@@ -877,6 +970,21 @@ model HealthConcern {
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@map("health_concerns")
+}
+
+/// Направления студии — горизонтальный блок на главной клиентского приложения.
+model StudioDirection {
+  id          String   @id @default(uuid()) @db.Uuid
+  slug        String   @unique
+  title       String
+  description String?
+  /// Имя глифа Font Awesome 5 (solid) в мобильном приложении, напр. spa, leaf.
+  iconKey     String   @map("icon_key")
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("studio_directions")
 }
 
 /// Электронные согласия (обработка ПДн, на процедуру, на маркетинг, TOS).
@@ -1215,12 +1323,12 @@ model Program {
 model PhysicalGood {
   id            String   @id @default(uuid()) @db.Uuid
   networkId     String   @map("network_id") @db.Uuid
+  categoryId    String   @map("category_id") @db.Uuid
   sku           String   @unique
   slug          String   @unique
   name          String
   description   String?
   brand         String?
-  category      String?
   imageUrls     String[] @default([]) @map("image_urls")
   priceMinor    Int      @map("price_minor")
   currency      String   @default("RUB")
@@ -1235,14 +1343,34 @@ model PhysicalGood {
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  network    Network     @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  network    Network              @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  category   PhysicalGoodCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   orderItems OrderItem[]
-  promoCodes PromoCode[] @relation("PromoCodePhysicalGood")
-  ctas       ContentCta[] @relation("CtaGood")
+  promoCodes PromoCode[]          @relation("PromoCodePhysicalGood")
+  ctas       ContentCta[]         @relation("CtaGood")
 
   @@index([networkId, isActive])
-  @@index([category])
+  @@index([categoryId])
   @@map("physical_goods")
+}
+
+model PhysicalGoodCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  networkId String   @map("network_id") @db.Uuid
+  slug      String
+  name      String
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  network Network         @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  goods   PhysicalGood[]
+
+  @@unique([networkId, slug])
+  @@unique([networkId, name])
+  @@index([networkId, isActive])
+  @@map("physical_good_categories")
 }
 
 // =============================================================================
@@ -1532,7 +1660,7 @@ model PromoCode {
 }
 
 // =============================================================================
-// УВЕДОМЛЕНИЯ (PodoCare — единственный источник коммуникации с клиентом:
+// УВЕДОМЛЕНИЯ (Solodova Recovery System — единственный источник коммуникации с клиентом:
 // собственные SMS, push и email. iKlients не используется.)
 // =============================================================================
 

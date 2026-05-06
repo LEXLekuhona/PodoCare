@@ -1,4 +1,4 @@
-import { AppointmentSource } from '@podocare/shared-types';
+import { AppointmentSource } from '@srs/shared-types';
 import { Type } from 'class-transformer';
 import { IsDate, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 

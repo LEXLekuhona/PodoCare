@@ -5,9 +5,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { UserRole } from '@podocare/shared-types';
+import { UserRole } from '@srs/shared-types';
 import { Prisma } from '@prisma/client';
 import argon2 from 'argon2';
+import { normalizePhone, normalizeEmail } from '../../../common/utils/normalize-phone';
 
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 
@@ -24,6 +25,59 @@ function isUniqueViolation(e: unknown): e is Prisma.PrismaClientKnownRequestErro
 export class AdminSpecialistsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async syncSpecialistServicesTx(
+    tx: Prisma.TransactionClient,
+    specialistProfileId: string,
+    serviceIds: string[],
+    allowedStudioIds: string[],
+  ): Promise<void> {
+    const unique = [...new Set(serviceIds.map((id) => id.trim()).filter(Boolean))];
+    if (unique.length === 0) {
+      await tx.specialistService.deleteMany({ where: { specialistId: specialistProfileId } });
+      return;
+    }
+    const services = await tx.service.findMany({
+      where: { id: { in: unique } },
+      select: { id: true, studioId: true },
+    });
+    if (services.length !== unique.length) {
+      throw new BadRequestException('Одна или несколько услуг не найдены');
+    }
+    const allowed = new Set(allowedStudioIds);
+    for (const s of services) {
+      if (!allowed.has(s.studioId)) {
+        throw new BadRequestException('Услуга не относится к студиям специалиста');
+      }
+    }
+    await tx.specialistService.deleteMany({ where: { specialistId: specialistProfileId } });
+    await tx.specialistService.createMany({
+      data: unique.map((serviceId) => ({ specialistId: specialistProfileId, serviceId })),
+    });
+  }
+
+  private async syncSpecialistCategoriesTx(
+    tx: Prisma.TransactionClient,
+    specialistProfileId: string,
+    categoryIds: string[],
+  ): Promise<void> {
+    const unique = [...new Set(categoryIds.map((id) => id.trim()).filter(Boolean))];
+    if (unique.length === 0) {
+      await tx.specialistCategory.deleteMany({ where: { specialistId: specialistProfileId } });
+      return;
+    }
+    const categories = await tx.serviceCategory.findMany({
+      where: { id: { in: unique } },
+      select: { id: true },
+    });
+    if (categories.length !== unique.length) {
+      throw new BadRequestException('Одна или несколько категорий не найдены');
+    }
+    await tx.specialistCategory.deleteMany({ where: { specialistId: specialistProfileId } });
+    await tx.specialistCategory.createMany({
+      data: unique.map((categoryId) => ({ specialistId: specialistProfileId, categoryId })),
+    });
+  }
+
   private normalizeSpecializations(raw?: string[]): string[] {
     if (!raw?.length) return [];
     const out: string[] = [];
@@ -38,29 +92,6 @@ export class AdminSpecialistsService {
       if (out.length >= 20) break;
     }
     return out;
-  }
-
-  private normalizePhone(raw: string): string {
-    const normalized = raw.replace(/[^\d+]/g, '');
-    const digits = normalized.replace(/\D/g, '');
-    if (digits.length < 10 || digits.length > 15) {
-      throw new BadRequestException('Некорректный номер телефона');
-    }
-    if (digits.length === 11 && digits.startsWith('8')) {
-      return `+7${digits.slice(1)}`;
-    }
-    if (digits.length === 11 && digits.startsWith('7')) {
-      return `+${digits}`;
-    }
-    return normalized.startsWith('+') ? `+${digits}` : `+${digits}`;
-  }
-
-  private normalizeEmail(raw: string): string {
-    const t = raw.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)) {
-      throw new BadRequestException('Некорректный email');
-    }
-    return t;
   }
 
   private async getStudioAdminStudioId(userId: string): Promise<string> {
@@ -178,6 +209,8 @@ export class AdminSpecialistsService {
         specialistProfile: {
           select: {
             specializations: true,
+            services: { select: { serviceId: true } },
+            categories: { select: { categoryId: true } },
             studios: {
               select: {
                 studio: { select: { id: true, name: true, city: true } },
@@ -201,6 +234,8 @@ export class AdminSpecialistsService {
       specialistProfile: {
         specializations: u.specialistProfile?.specializations ?? [],
         studios: u.specialistProfile?.studios.map((l) => l.studio) ?? [],
+        serviceIds: u.specialistProfile?.services.map((x) => x.serviceId) ?? [],
+        categoryIds: u.specialistProfile?.categories.map((x) => x.categoryId) ?? [],
       },
     }));
   }
@@ -223,6 +258,8 @@ export class AdminSpecialistsService {
         specialistProfile: {
           select: {
             specializations: true,
+            services: { select: { serviceId: true } },
+            categories: { select: { categoryId: true } },
             studios: {
               select: {
                 studio: { select: { id: true, name: true, city: true } },
@@ -248,6 +285,8 @@ export class AdminSpecialistsService {
       specialistProfile: {
         specializations: row.specialistProfile.specializations,
         studios: row.specialistProfile.studios.map((l) => l.studio),
+        serviceIds: row.specialistProfile.services.map((x) => x.serviceId),
+        categoryIds: row.specialistProfile.categories.map((x) => x.categoryId),
       },
     };
   }
@@ -263,8 +302,8 @@ export class AdminSpecialistsService {
       dto.primaryStudioId,
     );
 
-    const phone = this.normalizePhone(dto.phone);
-    const email = this.normalizeEmail(dto.email);
+    const phone = normalizePhone(dto.phone);
+    const email = normalizeEmail(dto.email);
     const passwordHash = await argon2.hash(dto.password);
     const specializations = this.normalizeSpecializations(dto.specializations);
 
@@ -298,6 +337,12 @@ export class AdminSpecialistsService {
           },
           select: { id: true },
         });
+        if (dto.serviceIds !== undefined) {
+          await this.syncSpecialistServicesTx(tx, profile.id, dto.serviceIds, uniqueStudioIds);
+        }
+        if (dto.categoryIds !== undefined) {
+          await this.syncSpecialistCategoriesTx(tx, profile.id, dto.categoryIds);
+        }
         return { userId: u.id, profileId: profile.id };
       });
       return this.getById(actor, created.userId);
@@ -352,15 +397,15 @@ export class AdminSpecialistsService {
 
     const data: Prisma.UserUpdateInput = {};
 
-    if (dto.email !== undefined) {
-      data.email = this.normalizeEmail(dto.email);
+    if (dto.email !== undefined && dto.email !== null) {
+      data.email = normalizeEmail(dto.email);
     }
-    if (dto.phone !== undefined) {
-      data.phone = this.normalizePhone(dto.phone);
+    if (dto.phone !== undefined && dto.phone !== null) {
+      data.phone = normalizePhone(dto.phone);
     }
     if (dto.firstName !== undefined) data.firstName = dto.firstName.trim();
     if (dto.lastName !== undefined) data.lastName = dto.lastName.trim();
-    if (dto.middleName !== undefined) {
+    if (dto.middleName !== undefined && dto.middleName !== null) {
       data.middleName = dto.middleName.trim() === '' ? null : dto.middleName.trim();
     }
     if (dto.password !== undefined) {
@@ -408,6 +453,24 @@ export class AdminSpecialistsService {
             where: { userId: id },
             data: profilePatch,
           });
+        }
+
+        if (dto.serviceIds !== undefined) {
+          let allowedStudios: string[];
+          if (nextStudioIds !== null) {
+            allowedStudios = nextStudioIds;
+          } else {
+            const links = await tx.specialistStudio.findMany({
+              where: { specialistProfileId: profileId },
+              select: { studioId: true },
+            });
+            allowedStudios = links.map((l) => l.studioId);
+          }
+          await this.syncSpecialistServicesTx(tx, profileId, dto.serviceIds, allowedStudios);
+        }
+
+        if (dto.categoryIds !== undefined) {
+          await this.syncSpecialistCategoriesTx(tx, profileId, dto.categoryIds);
         }
       });
     } catch (e) {

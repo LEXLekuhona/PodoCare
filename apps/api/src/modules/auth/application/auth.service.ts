@@ -1,11 +1,12 @@
 import { randomInt } from 'node:crypto';
 
+import { normalizePhone } from '../../../common/utils/normalize-phone';
 import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type { OtpCode, User } from '@prisma/client';
 import argon2 from 'argon2';
-import { UserRole } from '@podocare/shared-types';
+import { UserRole } from '@srs/shared-types';
 
 import type { JwtConfig } from '../../../config/jwt.config';
 import { CryptoService } from '../../../infrastructure/crypto/crypto.service';
@@ -83,7 +84,7 @@ export class AuthService {
   }
 
   async requestOtp(input: RequestOtpDto): Promise<RequestOtpResponse> {
-    const normalizedPhone = this.normalizePhone(input.phone);
+    const normalizedPhone = normalizePhone(input.phone);
     const latestOtp = await this.prisma.otpCode.findFirst({
       where: { phone: normalizedPhone },
       orderBy: { createdAt: 'desc' },
@@ -111,7 +112,7 @@ export class AuthService {
       },
     });
 
-    this.sendOtp(normalizedPhone, code);
+    await this.sendOtpSafe(normalizedPhone, code);
 
     return {
       expiresAt: expiresAt.toISOString(),
@@ -122,7 +123,7 @@ export class AuthService {
   }
 
   async verifyOtp(input: VerifyOtpDto): Promise<AuthResponse> {
-    const normalizedPhone = this.normalizePhone(input.phone);
+    const normalizedPhone = normalizePhone(input.phone);
     const otp = await this.prisma.otpCode.findFirst({
       where: { phone: normalizedPhone },
       orderBy: { createdAt: 'desc' },
@@ -144,7 +145,7 @@ export class AuthService {
     const expectedHash = this.cryptoService.hashSha256(
       this.getOtpHashPayload(normalizedPhone, input.code),
     );
-    if (expectedHash !== otp.codeHash) {
+    if (!this.cryptoService.timingSafeCompare(expectedHash, otp.codeHash)) {
       await this.prisma.otpCode.update({
         where: { id: otp.id },
         data: { attempts: { increment: 1 } },
@@ -388,21 +389,6 @@ export class AuthService {
     };
   }
 
-  private normalizePhone(raw: string): string {
-    const normalized = raw.replace(/[^\d+]/g, '');
-    const digits = normalized.replace(/\D/g, '');
-    if (digits.length < 10 || digits.length > 15) {
-      throw new BadRequestException('Некорректный номер телефона');
-    }
-    if (digits.length === 11 && digits.startsWith('8')) {
-      return `+7${digits.slice(1)}`;
-    }
-    if (digits.length === 11 && digits.startsWith('7')) {
-      return `+${digits}`;
-    }
-    return normalized.startsWith('+') ? `+${digits}` : `+${digits}`;
-  }
-
   private ensureResendAllowed(otp: OtpCode): void {
     if (otp.usedAt) {
       return;
@@ -426,22 +412,26 @@ export class AuthService {
   private getOtpHashPayload(phone: string, code: string): string {
     return `${phone}:${code}`;
   }
-
+  private async sendOtpSafe(phone: string, code: string): Promise<void> {
+    try {
+      this.sendOtp(phone, code);
+    } catch (err) {
+      // Не падаем — OTP уже создан в БД. Логируем для алертов.
+      console.error(`[OTP] Failed to send to ${phone}:`, err);
+    }
+  }
+  
   private sendOtp(phone: string, code: string): void {
     if (this.otpProvider === 'console' || this.nodeEnv !== 'production') {
-      // eslint-disable-next-line no-console
       console.log(`[OTP] ${phone}: ${code}`);
       return;
     }
-
-    // TODO: на этапе notifications-core заменить заглушку на провайдер (SMS.RU/SMSC/...)
-    // eslint-disable-next-line no-console
     console.warn(
       `OTP provider "${this.otpProvider}" не подключен. Код отправлен в console fallback.`,
     );
-    // eslint-disable-next-line no-console
     console.log(`[OTP] ${phone}: ${code}`);
   }
+
 
   private shouldExposeDebugCode(): boolean {
     return this.nodeEnv !== 'production' || this.otpProvider === 'console';

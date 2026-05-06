@@ -1,8 +1,8 @@
 {
-  "name": "podocare",
+  "name": "solodova-recovery-system",
   "version": "0.1.0",
   "private": true,
-  "description": "PodoCare - экосистема для подологических студий: мобильное приложение клиента, интерфейс студии (планшет), административная панель и бэкенд.",
+  "description": "Solodova Recovery System - экосистема для подологических студий: мобильное приложение клиента, интерфейс студии (планшет), административная панель и бэкенд.",
   "license": "UNLICENSED",
   "packageManager": "pnpm@10.33.0",
   "engines": {
@@ -24,13 +24,13 @@
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "docker:reset": "docker compose down -v && docker compose up -d",
-    "dev:stack": "turbo run dev --filter=@podocare/api --filter=@podocare/mobile --parallel",
-    "dev:stack:admin": "turbo run dev --filter=@podocare/api --filter=@podocare/admin --parallel",
-    "bootstrap:dev-admin": "pnpm --filter @podocare/api create-dev-admin",
-    "dev:stack:infra": "docker compose up -d && node scripts/wait-for-infra.cjs && pnpm --filter @podocare/api exec prisma generate && pnpm --filter @podocare/api exec prisma migrate deploy && pnpm dev:stack",
-    "dev:mobile": "pnpm --filter @podocare/mobile dev",
-    "dev:mobile:clear": "pnpm --filter @podocare/mobile run dev:clear",
-    "dev:android": "docker compose up -d && node scripts/wait-for-infra.cjs && pnpm --filter @podocare/api exec prisma generate && pnpm --filter @podocare/api exec prisma migrate deploy && pnpm --filter @podocare/api prisma:seed && pnpm dev:stack",
+    "dev:stack": "turbo run dev --filter=@srs/api --filter=@srs/mobile --parallel",
+    "dev:stack:admin": "turbo run dev --filter=@srs/api --filter=@srs/admin --parallel",
+    "bootstrap:dev-admin": "pnpm --filter @srs/api create-dev-admin",
+    "dev:stack:infra": "docker compose up -d && node scripts/wait-for-infra.cjs && pnpm --filter @srs/api exec prisma generate && pnpm --filter @srs/api exec prisma migrate deploy && pnpm dev:stack",
+    "dev:mobile": "pnpm --filter @srs/mobile dev",
+    "dev:mobile:clear": "pnpm --filter @srs/mobile run dev:clear",
+    "dev:android": "docker compose up -d && node scripts/wait-for-infra.cjs && pnpm --filter @srs/api exec prisma generate && pnpm --filter @srs/api exec prisma migrate deploy && pnpm --filter @srs/api prisma:seed && pnpm dev:stack",
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {

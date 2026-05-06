@@ -14,9 +14,9 @@ export default async function globalSetup(): Promise<void> {
   // eslint-disable-next-line no-console
   console.log('\n🐘  Запуск Postgres testcontainer…');
   const postgres = await new PostgreSqlContainer('postgres:16-alpine')
-    .withDatabase('podocare_test')
-    .withUsername('podocare')
-    .withPassword('podocare_test_pwd')
+    .withDatabase('srs_test')
+    .withUsername('srs')
+    .withPassword('srs_test_pwd')
     .start();
 
   // eslint-disable-next-line no-console

@@ -137,7 +137,7 @@ export function DateTimePage() {
 
   return (
     <View style={styles.root}>
-      <AppHeader title="PodoCare" onBackPress={() => router.back()} />
+      <AppHeader title="Solodova Recovery System" onBackPress={() => router.back()} />
 
       <ScrollView
         style={styles.scroll}

@@ -4,11 +4,13 @@ import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
   TextInput,
+  TouchableWithoutFeedback,
   View as RNView,
 } from 'react-native';
 
@@ -33,8 +35,9 @@ export default function NameEntryScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
     >
-      <View style={styles.screen}>
-        <RNView style={styles.decorBlob} pointerEvents="none" />
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <View style={styles.screen}>
+          <RNView style={styles.decorBlob} pointerEvents="none" />
 
         <SafeAreaPadding minTop={10} minBottom={0} style={styles.topNav} lightColor="transparent" darkColor="transparent">
           <Pressable
@@ -134,7 +137,8 @@ export default function NameEntryScreen() {
             </Pressable>
           </SafeAreaPadding>
         </View>
-      </View>
+        </View>
+      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 }

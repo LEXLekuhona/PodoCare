@@ -1,9 +1,13 @@
-import { UserRole } from '@podocare/shared-types';
+import { UserRole } from '@srs/shared-types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { ApiError, apiRequest } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { canManageStaff, canMutateTenantCatalog } from '../../lib/roles';
+import { FilterBar } from '../../ui/FilterBar';
+import { useToast } from '../../ui/ToastContext';
 
 import type { FormEvent } from 'react';
 
@@ -77,12 +81,14 @@ function roleNeedsStudio(role: UserRole): boolean {
 
 export function StaffPage() {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const manage = user ? canManageStaff(user.role) : false;
   const canFilterByStudio = user ? canMutateTenantCatalog(user.role) : false;
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [studios, setStudios] = useState<StudioRow[]>([]);
   const [rows, setRows] = useState<StaffRow[]>([]);
-  const [studioFilterId, setStudioFilterId] = useState('');
+  const [studioFilterId, setStudioFilterId] = useState(() => searchParams.get('studio') ?? '');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<{
@@ -91,6 +97,8 @@ export function StaffPage() {
     form: StaffFormState;
   } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') ?? '');
+  const debouncedQuery = useDebouncedValue(searchQuery);
 
   const rolesForActor = useMemo(
     () => (user ? assignableRoles(user.role) : []),
@@ -234,8 +242,10 @@ export function StaffPage() {
       }
       setModal(null);
       await reload();
+      showToast(modal.mode === 'create' ? 'Сотрудник создан' : 'Сотрудник обновлён', 'success');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Ошибка сохранения');
+      showToast('Не удалось сохранить сотрудника', 'error');
     } finally {
       setSaving(false);
     }
@@ -253,56 +263,99 @@ export function StaffPage() {
     try {
       await apiRequest(`/admin/catalog/staff/${row.id}`, { method: 'DELETE' });
       await reload();
+      showToast('Сотрудник деактивирован', 'success');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Ошибка удаления');
+      showToast('Не удалось деактивировать сотрудника', 'error');
     }
   }
 
   const studioLabel = (r: StaffRow) =>
     r.studio ? `${r.studio.name}, ${r.studio.city}` : '—';
+  const filteredRows = useMemo(() => {
+    const q = debouncedQuery.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => {
+      const fullName = `${r.lastName} ${r.firstName} ${r.middleName ?? ''}`;
+      const studio = r.studio ? `${r.studio.name}, ${r.studio.city}` : '—';
+      return (
+        fullName.toLowerCase().includes(q) ||
+        roleLabelRu(r.role).toLowerCase().includes(q) ||
+        (r.email ?? '').toLowerCase().includes(q) ||
+        r.phone.toLowerCase().includes(q) ||
+        studio.toLowerCase().includes(q)
+      );
+    });
+  }, [rows, debouncedQuery]);
+
+  useEffect(() => {
+    const next = new URLSearchParams();
+    const q = searchQuery.trim();
+    const studio = studioFilterId.trim();
+    if (q) next.set('q', q);
+    if (studio) next.set('studio', studio);
+    setSearchParams(next, { replace: true });
+  }, [searchQuery, studioFilterId, setSearchParams]);
 
   return (
-    <div>
-      <div className="toolbar">
-        <h1 style={{ margin: 0, flex: 1 }}>Сотрудники</h1>
-        {manage ? (
-          <button
-            type="button"
-            className="primary"
-            onClick={() => openCreate()}
-            disabled={user?.role !== UserRole.StudioAdmin && studios.length === 0}
-          >
-            Добавить
-          </button>
-        ) : null}
+    <div className="page-shell">
+      <div className="page-header">
+        <div className="toolbar" style={{ marginBottom: 0 }}>
+          <h1 className="page-title" style={{ flex: 1 }}>
+            Сотрудники
+          </h1>
+          {manage ? (
+            <button
+              type="button"
+              className="primary"
+              onClick={() => openCreate()}
+              disabled={user?.role !== UserRole.StudioAdmin && studios.length === 0}
+            >
+              Добавить
+            </button>
+          ) : null}
+        </div>
+        <p className="page-subtitle">
+          Администраторы студий и прочие роли без графика приёма. Специалистов ведите в разделе
+          «Специалисты».
+        </p>
       </div>
 
-      <p style={{ color: 'var(--muted)', marginTop: 0, fontSize: '0.9rem' }}>
-        Администраторы студий и прочие роли без графика приёма. Специалистов ведите в разделе «Специалисты».
-      </p>
-
-      {canFilterByStudio ? (
-        <div className="field" style={{ maxWidth: 420, marginBottom: '1rem' }}>
-          <label htmlFor="staff-filter-studio">Фильтр по студии</label>
-          <select
-            id="staff-filter-studio"
-            value={studioFilterId}
-            onChange={(ev) => setStudioFilterId(ev.target.value)}
-          >
-            <option value="">Все</option>
-            {studios.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} ({s.city})
-              </option>
-            ))}
-          </select>
-        </div>
-      ) : null}
+      <FilterBar
+        query={searchQuery}
+        onQueryChange={setSearchQuery}
+        onReset={() => {
+          setSearchQuery('');
+          setStudioFilterId('');
+        }}
+        resetDisabled={searchQuery.trim() === '' && studioFilterId.trim() === ''}
+        foundCount={filteredRows.length}
+        totalCount={rows.length}
+        placeholder="ФИО, роль, телефон, email, студия"
+      >
+        {canFilterByStudio ? (
+          <div className="field" style={{ minWidth: 260, maxWidth: 380 }}>
+            <label htmlFor="staff-filter-studio">Фильтр по студии</label>
+            <select
+              id="staff-filter-studio"
+              value={studioFilterId}
+              onChange={(ev) => setStudioFilterId(ev.target.value)}
+            >
+              <option value="">Все</option>
+              {studios.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.city})
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+      </FilterBar>
 
       {user?.role !== UserRole.StudioAdmin && studios.length === 0 && !loading ? (
-        <p style={{ color: 'var(--muted)' }}>
-          Сначала создайте студию на странице «Студии».
-        </p>
+        <div className="surface-card">
+          <p style={{ color: 'var(--muted)', margin: 0 }}>Сначала создайте студию на странице «Студии».</p>
+        </div>
       ) : null}
 
       {error ? <div className="error-banner">{error}</div> : null}
@@ -310,7 +363,7 @@ export function StaffPage() {
       {loading ? (
         <p style={{ color: 'var(--muted)' }}>Загрузка…</p>
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap sticky-head">
           <table>
             <thead>
               <tr>
@@ -319,39 +372,47 @@ export function StaffPage() {
                 <th>Студия</th>
                 <th>Email</th>
                 <th>Телефон</th>
-                <th>Активен</th>
                 {manage ? <th /> : null}
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.id}>
-                  <td>
-                    {r.lastName} {r.firstName}
-                    {r.middleName ? ` ${r.middleName}` : ''}
-                  </td>
-                  <td>{roleLabelRu(r.role)}</td>
-                  <td>{studioLabel(r)}</td>
-                  <td>{r.email ?? '—'}</td>
-                  <td className="mono">{r.phone}</td>
-                  <td>{r.isActive ? 'да' : 'нет'}</td>
-                  {manage ? (
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      <button type="button" onClick={() => openEdit(r)}>
-                        Изменить
-                      </button>{' '}
-                      <button
-                        type="button"
-                        className="danger"
-                        onClick={() => void removeRow(r)}
-                        disabled={r.id === user?.id}
-                      >
-                        Деактивировать
-                      </button>
+              {filteredRows.length > 0 ? (
+                filteredRows.map((r) => (
+                  <tr key={r.id}>
+                    <td>
+                      {r.lastName} {r.firstName}
+                      {r.middleName ? ` ${r.middleName}` : ''}
                     </td>
-                  ) : null}
+                    <td>{roleLabelRu(r.role)}</td>
+                    <td>{studioLabel(r)}</td>
+                    <td>{r.email ?? '—'}</td>
+                    <td className="mono">{r.phone}</td>
+                    {manage ? (
+                      <td>
+                        <span className="inline-actions">
+                          <button type="button" onClick={() => openEdit(r)}>
+                            Изменить
+                          </button>
+                          <button
+                            type="button"
+                            className="danger"
+                            onClick={() => void removeRow(r)}
+                            disabled={r.id === user?.id}
+                          >
+                            Удалить
+                          </button>
+                        </span>
+                      </td>
+                    ) : null}
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={manage ? 6 : 5} style={{ color: 'var(--muted)' }}>
+                    Ничего не найдено. Попробуйте изменить фильтры.
+                  </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
@@ -498,7 +559,7 @@ export function StaffPage() {
 
               {modal.mode === 'edit' ? (
                 <div className="field">
-                  <label>
+                  <label className="modal-toggle">
                     <input
                       type="checkbox"
                       checked={modal.form.isActive}

@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const KEY = 'podocare.selectedStudio.v1';
+const KEY = 'srs.selectedStudio.v1';
 
 export type SelectedStudio = {
   id: string;

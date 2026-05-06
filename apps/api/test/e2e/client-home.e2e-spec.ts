@@ -1,20 +1,21 @@
 import type { INestApplication } from '@nestjs/common';
-import { ContentAudience, ContentFormat, FaqCategory, UserRole } from '@podocare/shared-types';
+import { ContentAudience, ContentFormat, FaqCategory, UserRole } from '@srs/shared-types';
 import { addMinutes } from 'date-fns';
 import request from 'supertest';
 
 import { PrismaService } from '../../src/infrastructure/prisma/prisma.service';
 import { buildTestApp } from '../helpers/build-test-app';
 
-async function loginClient(app: INestApplication, phone = '+79991112233') {
+async function loginClient(app: INestApplication, phone?: string) {
+  const actualPhone = phone ?? `+7999${Math.floor(1000000 + Math.random() * 8999999)}`;
   const requestOtp = await request(app.getHttpServer()).post('/api/v1/auth/otp/request').send({
-    phone,
+    phone: actualPhone,
   });
   expect(requestOtp.status).toBe(201);
   expect(typeof requestOtp.body.debugCode).toBe('string');
 
   const verifyOtp = await request(app.getHttpServer()).post('/api/v1/auth/otp/verify').send({
-    phone,
+    phone: actualPhone,
     code: requestOtp.body.debugCode,
     deviceType: 'mobile_android',
   });
@@ -25,6 +26,7 @@ async function loginClient(app: INestApplication, phone = '+79991112233') {
     accessToken: verifyOtp.body.tokens.accessToken as string,
     refreshToken: verifyOtp.body.tokens.refreshToken as string,
     userId: verifyOtp.body.user.id as string,
+    phone: actualPhone,
   };
 }
 
@@ -48,7 +50,7 @@ describe('Client home prerequisites (e2e)', () => {
     const unauthorized = await request(app.getHttpServer()).get('/api/v1/me');
     expect(unauthorized.status).toBe(401);
 
-    const { accessToken } = await loginClient(app);
+    const { accessToken, phone } = await loginClient(app);
 
     const me1 = await request(app.getHttpServer())
       .get('/api/v1/me')
@@ -58,7 +60,7 @@ describe('Client home prerequisites (e2e)', () => {
       expect.objectContaining({
         id: expect.any(String),
         role: UserRole.Client,
-        phone: '+79991112233',
+        phone,
         firstName: expect.any(String),
         lastName: expect.any(String),
         email: null,
@@ -80,6 +82,49 @@ describe('Client home prerequisites (e2e)', () => {
     expect(me2.status).toBe(200);
     expect(me2.body.firstName).toBe('Мария');
     expect(me2.body.lastName).toBe('Иванова');
+
+    const forbiddenPatch = await request(app.getHttpServer())
+      .patch('/api/v1/me/medical-card')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        chronicDiseases: ['test'],
+      });
+    expect(forbiddenPatch.status).toBe(403);
+  });
+
+  it('enforces auth on client protected endpoints', async () => {
+    const protectedEndpoints = [
+      '/api/v1/studios',
+      '/api/v1/studios/studio-directions',
+      '/api/v1/content/feed',
+      '/api/v1/client/content/feed',
+      '/api/v1/faq',
+      '/api/v1/appointments/next',
+      '/api/v1/education/screen',
+      '/api/v1/me/medical-card',
+      '/api/v1/me/consents',
+    ];
+
+    for (const endpoint of protectedEndpoints) {
+      const res = await request(app.getHttpServer()).get(endpoint);
+      expect(res.status).toBe(401);
+    }
+  });
+
+  it('GET /education/screen accepts OkHttp-style cache buster ?_= on query', async () => {
+    const { accessToken } = await loginClient(app);
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/education/screen')
+      .query({ audience: 'client', _: String(Date.now()) })
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(
+      expect.objectContaining({
+        myCourses: expect.any(Array),
+        freeMaterials: expect.any(Array),
+        featured: expect.any(Array),
+      }),
+    );
   });
 
   it('GET /studios returns active studios', async () => {
@@ -265,6 +310,53 @@ describe('Client home prerequisites (e2e)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(2);
     expect(res.body.map((x: any) => x.question)).toEqual(['Q1', 'Q2']);
+
+    await prisma.studioDirection.create({
+      data: {
+        slug: 'sd-second',
+        title: 'Второе',
+        description: 'Описание B',
+        iconKey: 'leaf',
+        sortOrder: 20,
+        isActive: true,
+      },
+    });
+    await prisma.studioDirection.create({
+      data: {
+        slug: 'sd-first',
+        title: 'Первое',
+        description: 'Описание A',
+        iconKey: 'spa',
+        sortOrder: 10,
+        isActive: true,
+      },
+    });
+    await prisma.studioDirection.create({
+      data: {
+        slug: 'sd-hidden',
+        title: 'Скрыто',
+        description: null,
+        iconKey: 'star',
+        sortOrder: 5,
+        isActive: false,
+      },
+    });
+
+    const sdRes = await request(app.getHttpServer())
+      .get('/api/v1/studios/studio-directions')
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(sdRes.status).toBe(200);
+    expect(sdRes.body).toHaveLength(2);
+    expect(sdRes.body.map((x: { slug: string }) => x.slug)).toEqual(['sd-first', 'sd-second']);
+    expect(sdRes.body[0]).toEqual(
+      expect.objectContaining({
+        slug: 'sd-first',
+        title: 'Первое',
+        description: 'Описание A',
+        iconKey: 'spa',
+      }),
+    );
   });
 
   it('GET /appointments/next returns nearest upcoming appointment for current client', async () => {

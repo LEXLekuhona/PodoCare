@@ -23,6 +23,7 @@ import { EducationModule } from './modules/education/education.module';
 import { FaqModule } from './modules/faq/faq.module';
 import { HealthModule } from './modules/health/health.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { QuizModule } from './modules/quiz/quiz.module';
 import { StudiosModule } from './modules/studios/studios.module';
 import { UsersModule } from './modules/users/users.module';
 
@@ -101,6 +102,7 @@ import { UsersModule } from './modules/users/users.module';
     FaqModule,
     HealthModule,
     NotificationsModule,
+    QuizModule,
   ],
 })
 export class AppModule {}

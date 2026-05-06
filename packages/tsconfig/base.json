@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "display": "PodoCare base",
+  "display": "Solodova Recovery System base",
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022"],

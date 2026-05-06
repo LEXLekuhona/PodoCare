@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import { UserRole } from '@podocare/shared-types';
+import { UserRole } from '@srs/shared-types';
 import argon2 from 'argon2';
 import request from 'supertest';
 
@@ -91,7 +91,7 @@ describe('Auth (e2e)', () => {
         studioId: studio.id,
         role: UserRole.StudioAdmin,
         phone: '+79990000001',
-        email: 'admin@podocare.local',
+        email: 'admin@solodova-recovery.local',
         passwordHash: await argon2.hash(password),
         firstName: 'Admin',
         lastName: 'User',
@@ -101,7 +101,7 @@ describe('Auth (e2e)', () => {
     const badAttempt = await request(app.getHttpServer())
       .post('/api/v1/auth/staff/login')
       .send({
-        email: 'admin@podocare.local',
+        email: 'admin@solodova-recovery.local',
         password: 'wrong-password',
         deviceType: 'admin_web',
       });
@@ -110,7 +110,7 @@ describe('Auth (e2e)', () => {
     const okAttempt = await request(app.getHttpServer())
       .post('/api/v1/auth/staff/login')
       .send({
-        email: 'admin@podocare.local',
+        email: 'admin@solodova-recovery.local',
         password,
         deviceType: 'admin_web',
       });

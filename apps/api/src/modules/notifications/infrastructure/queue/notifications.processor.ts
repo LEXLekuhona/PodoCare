@@ -7,7 +7,7 @@ import {
   NotificationStatus,
   NotificationType,
   SmsProvider as SharedSmsProvider,
-} from '@podocare/shared-types';
+} from '@srs/shared-types';
 
 import { PrismaService } from '../../../../infrastructure/prisma/prisma.service';
 import {

@@ -6,7 +6,7 @@ import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from './roles.decorator';
 
 import type { JwtAccessPayload } from './jwt.strategy';
-import type { UserRole } from '@podocare/shared-types';
+import type { UserRole } from '@srs/shared-types';
 
 @Injectable()
 export class RolesGuard implements CanActivate {

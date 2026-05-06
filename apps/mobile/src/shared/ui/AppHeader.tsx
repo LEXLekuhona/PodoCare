@@ -9,6 +9,8 @@ type Props = {
   title?: string;
   /** Дополнительные стили для центрального заголовка (цвет бренда и т.п.). */
   titleStyle?: StyleProp<TextStyle>;
+  /** Если задано, заголовок переносится не более чем на это число строк. */
+  titleNumberOfLines?: number;
   left?: React.ReactNode;
   right?: React.ReactNode;
   onBackPress?: (() => void) | null;
@@ -41,7 +43,14 @@ export function AppHeader(props: Props) {
         </View>
 
         <View style={styles.center} lightColor="transparent" darkColor="transparent">
-          {props.title ? <Text style={[styles.title, props.titleStyle]}>{props.title}</Text> : null}
+          {props.title ? (
+            <Text
+              style={[styles.title, props.titleStyle]}
+              numberOfLines={props.titleNumberOfLines}
+            >
+              {props.title}
+            </Text>
+          ) : null}
         </View>
 
         <View style={styles.side} lightColor="transparent" darkColor="transparent">

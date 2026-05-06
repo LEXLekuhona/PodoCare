@@ -1,4 +1,4 @@
-import { PushProvider } from '@podocare/shared-types';
+import { PushProvider } from '@srs/shared-types';
 import { IsBoolean, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 export class UpsertPushDeviceDto {

@@ -139,7 +139,7 @@ export function ProfilePage() {
           <ProfileMenuRow
             icon={<FontAwesome name="heartbeat" size={18} color={ICON_MAIN} />}
             label="Моя медкарта"
-            onPress={() => comingSoon('Моя медкарта')}
+            onPress={() => router.push('/(app)/medical-card')}
             showDivider
           />
           <ProfileMenuRow
@@ -174,12 +174,7 @@ export function ProfilePage() {
           <ProfileMenuRow
             icon={<FontAwesome name="question-circle-o" size={18} color={ICON_MAIN} />}
             label="FAQ"
-            onPress={() =>
-              Alert.alert(
-                'FAQ',
-                'Ответы на популярные вопросы — в блоке «Популярные вопросы» на главной.',
-              )
-            }
+            onPress={() => router.push('/(app)/faq')}
             showDivider
           />
           <ProfileMenuRow
@@ -204,7 +199,7 @@ export function ProfilePage() {
             label="О приложении"
             onPress={() =>
               Alert.alert(
-                'PodoCare',
+                'Solodova Recovery System',
                 `Версия ${appVersion}\n\nСервис заботы о здоровье стоп и ногтей.`,
               )
             }

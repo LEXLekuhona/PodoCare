@@ -2,7 +2,7 @@ import type {
   NotificationTemplateKey,
   NotificationType,
   SmsProvider as SharedSmsProvider,
-} from '@podocare/shared-types';
+} from '@srs/shared-types';
 
 export const NOTIFICATIONS_QUEUE = 'notifications';
 export const NOTIFICATIONS_SMS_JOB = 'sms.send';

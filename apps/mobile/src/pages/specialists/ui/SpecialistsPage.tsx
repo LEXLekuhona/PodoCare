@@ -28,28 +28,21 @@ const ON_SURFACE = '#191C1D';
 const ON_SURFACE_MUTED = '#5C6360';
 const OUTLINE_CHIP = 'rgba(112, 121, 115, 0.35)';
 
-type FilterId = 'all' | 'podology' | 'osteopathy' | 'massage' | 'reflexology';
+const ALL_FILTER_ID = 'all';
 
-const FILTERS: { id: FilterId; label: string }[] = [
-  { id: 'all', label: 'Все' },
-  { id: 'podology', label: 'Подологи' },
-  { id: 'osteopathy', label: 'Остеопаты' },
-  { id: 'massage', label: 'Массажисты' },
-  { id: 'reflexology', label: 'Рефлексологи' },
-];
+type FilterOption = {
+  id: string;
+  label: string;
+};
 
 type SpecialistRow = StudioSpecialistDto & {
   name: string;
-  filter: FilterId;
+  filterKey: string;
 };
 
-function inferFilter(title: string): FilterId {
-  const t = title.toLowerCase();
-  if (t.includes('остеопат')) return 'osteopathy';
-  if (t.includes('массаж')) return 'massage';
-  if (t.includes('рефлексолог')) return 'reflexology';
-  if (t.includes('подолог')) return 'podology';
-  return 'all';
+function titleToFilterKey(title: string): string {
+  const normalizedTitle = normalize(title);
+  return normalizedTitle !== '' ? `title:${normalizedTitle}` : 'title:unknown';
 }
 
 function initialsFromName(name: string): string {
@@ -67,8 +60,9 @@ type ListHeaderProps = {
   caption?: string;
   query: string;
   onQueryChange: Dispatch<SetStateAction<string>>;
-  filter: FilterId;
-  onFilterChange: (id: FilterId) => void;
+  filter: string;
+  filters: FilterOption[];
+  onFilterChange: (id: string) => void;
 };
 
 function SpecialistListHeader(props: ListHeaderProps) {
@@ -102,7 +96,7 @@ function SpecialistListHeader(props: ListHeaderProps) {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.chipsRow}
       >
-        {FILTERS.map((f) => {
+        {props.filters.map((f) => {
           const active = props.filter === f.id;
           return (
             <Pressable
@@ -137,7 +131,7 @@ export function SpecialistsPage() {
   const serviceFilterName = sanitizeRouteParam(useLocalSearchParams().serviceName);
 
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<FilterId>('all');
+  const [filter, setFilter] = useState<string>(ALL_FILTER_ID);
   const [specialists, setSpecialists] = useState<SpecialistRow[]>([]);
   const [studioLocation, setStudioLocation] = useState('');
   const [loading, setLoading] = useState(true);
@@ -162,7 +156,7 @@ export function SpecialistsPage() {
         rows.map((r) => ({
           ...r,
           name: `${r.firstName} ${r.lastName}`.trim(),
-          filter: inferFilter(r.title),
+          filterKey: titleToFilterKey(r.title),
         })),
       );
     } catch (e) {
@@ -178,18 +172,38 @@ export function SpecialistsPage() {
     void load();
   }, [load]);
 
+  const filterOptions = useMemo<FilterOption[]>(() => {
+    const byKey = new Map<string, string>();
+    for (const specialist of specialists) {
+      const label = specialist.title.trim();
+      if (label === '' || byKey.has(specialist.filterKey)) continue;
+      byKey.set(specialist.filterKey, label);
+    }
+    const dynamicFilters = [...byKey.entries()]
+      .map(([id, label]) => ({ id, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+    return [{ id: ALL_FILTER_ID, label: 'Все' }, ...dynamicFilters];
+  }, [specialists]);
+
+  useEffect(() => {
+    if (filterOptions.some((option) => option.id === filter)) return;
+    setFilter(ALL_FILTER_ID);
+  }, [filter, filterOptions]);
+
   const heroCaption = serviceFilterId
     ? 'Показаны только те мастера, кто оказывает выбранную услугу. Дальше — время приёма.'
     : 'Дальше выберите услугу у мастера и удобное время.';
 
   const filtered = useMemo(() => {
     const q = normalize(query);
-    return specialists.filter((s) => {
-      if (filter !== 'all' && s.filter !== filter) return false;
-      if (!q) return true;
-      const hay = `${s.name} ${s.title} ${studioLocation}`;
-      return normalize(hay).includes(q);
-    });
+    return specialists
+      .filter((s) => {
+        if (filter !== ALL_FILTER_ID && s.filterKey !== filter) return false;
+        if (!q) return true;
+        const hay = `${s.name} ${s.title} ${studioLocation}`;
+        return normalize(hay).includes(q);
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   }, [query, filter, specialists, studioLocation]);
 
   const listBottomPad = 24 + Math.max(insets.bottom, 12);
@@ -197,7 +211,7 @@ export function SpecialistsPage() {
   return (
     <View style={styles.root} lightColor="#FFFFFF" darkColor="#06130E">
       <AppHeader
-        title="PodoCare"
+        title="Solodova Recovery System"
         titleStyle={styles.headerBrand}
         onBackPress={canGoBack ? () => router.back() : undefined}
       />
@@ -228,6 +242,7 @@ export function SpecialistsPage() {
               query={query}
               onQueryChange={setQuery}
               filter={filter}
+              filters={filterOptions}
               onFilterChange={setFilter}
             />
             {loading ? (

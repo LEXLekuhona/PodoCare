@@ -6,7 +6,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { UserRole } from '@podocare/shared-types';
+import { UserRole } from '@srs/shared-types';
 import { Prisma } from '@prisma/client';
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- токен Nest DI

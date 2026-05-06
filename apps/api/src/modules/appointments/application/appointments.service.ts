@@ -8,7 +8,7 @@ import {
 import { InjectQueue } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
-import { AppointmentSource, AppointmentStatus, ShiftStatus } from '@podocare/shared-types';
+import { AppointmentSource, AppointmentStatus, ShiftStatus, UserRole } from '@srs/shared-types';
 import { Queue } from 'bullmq';
 import { addDays, addMinutes } from 'date-fns';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
@@ -24,9 +24,12 @@ import {
 } from './appointments.jobs';
 import type { BookingSlotsQueryDto } from '../presentation/dto/booking-slots-query.dto';
 
+import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
+import type { CreateAppointmentProtocolDto } from '../presentation/dto/create-appointment-protocol.dto';
 import { CreateAppointmentDto } from '../presentation/dto/create-appointment.dto';
 import { ListAppointmentsQueryDto } from '../presentation/dto/list-appointments-query.dto';
 import { RescheduleAppointmentDto } from '../presentation/dto/reschedule-appointment.dto';
+import type { UpdateAppointmentProtocolDto } from '../presentation/dto/update-appointment-protocol.dto';
 
 const SLOT_STEP_MINUTES = 30;
 
@@ -399,6 +402,7 @@ export class AppointmentsService {
         },
       },
       orderBy: [{ startsAt: 'asc' }],
+      take: 200,   // защита от случайного дампа всей таблицы
     });
   }
 
@@ -517,12 +521,132 @@ export class AppointmentsService {
     return updated;
   }
 
+  async createProtocol(id: string, actor: JwtAccessPayload, dto: CreateAppointmentProtocolDto) {
+    const appointment = await this.ensureAppointmentExists(id);
+    await this.assertStaffCanManageStudio(actor, appointment.studioId);
+    if (appointment.status === AppointmentStatus.CancelledByClient || appointment.status === AppointmentStatus.CancelledByStudio) {
+      throw new ConflictException('Нельзя создать протокол для отменённой записи');
+    }
+
+    const existing = await this.prisma.appointmentProtocol.findUnique({
+      where: { appointmentId: appointment.id },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new ConflictException('Протокол для этого визита уже существует');
+    }
+
+    return this.prisma.appointmentProtocol.create({
+      data: {
+        appointmentId: appointment.id,
+        authorUserId: actor.sub,
+        updatedByUserId: actor.sub,
+        proceduresDone: this.normalizeStringList(dto.proceduresDone),
+        diagnosis: this.normalizeNullable(dto.diagnosis),
+        materialsUsed: this.normalizeNullable(dto.materialsUsed),
+        internalNote: this.normalizeNullable(dto.internalNote),
+        clientVisible: dto.clientVisible,
+        updateReason: this.normalizeNullable(dto.reason),
+        updateComment: this.normalizeNullable(dto.comment),
+      },
+    });
+  }
+
+  async updateProtocol(id: string, actor: JwtAccessPayload, dto: UpdateAppointmentProtocolDto) {
+    const appointment = await this.ensureAppointmentExists(id);
+    await this.assertStaffCanManageStudio(actor, appointment.studioId);
+    const protocol = await this.prisma.appointmentProtocol.findUnique({
+      where: { appointmentId: appointment.id },
+    });
+    if (!protocol) {
+      throw new NotFoundException('Протокол для этого визита не найден');
+    }
+
+    return this.prisma.appointmentProtocol.update({
+      where: { appointmentId: appointment.id },
+      data: {
+        proceduresDone: dto.proceduresDone ? this.normalizeStringList(dto.proceduresDone) : undefined,
+        diagnosis: dto.diagnosis !== undefined ? this.normalizeNullable(dto.diagnosis) : undefined,
+        materialsUsed: dto.materialsUsed !== undefined ? this.normalizeNullable(dto.materialsUsed) : undefined,
+        internalNote: dto.internalNote !== undefined ? this.normalizeNullable(dto.internalNote) : undefined,
+        clientVisible: dto.clientVisible,
+        updatedByUserId: actor.sub,
+        updateReason: dto.reason !== undefined ? this.normalizeNullable(dto.reason) : undefined,
+        updateComment: dto.comment !== undefined ? this.normalizeNullable(dto.comment) : undefined,
+      },
+    });
+  }
+
   private async ensureAppointmentExists(id: string) {
     const appointment = await this.prisma.appointment.findUnique({ where: { id } });
     if (!appointment) {
       throw new NotFoundException('Запись не найдена');
     }
     return appointment;
+  }
+
+  private normalizeNullable(value: string | undefined): string | null {
+    if (value === undefined) return null;
+    const next = value.trim();
+    return next === '' ? null : next;
+  }
+
+  private normalizeStringList(value: string[] | undefined): string[] {
+    if (!value) return [];
+    return value.map((item) => item.trim()).filter((item) => item.length > 0);
+  }
+
+  private async assertStaffCanManageStudio(actor: JwtAccessPayload, studioId: string): Promise<void> {
+    if (actor.role === UserRole.SuperAdmin) return;
+    const studio = await this.prisma.studio.findUnique({
+      where: { id: studioId },
+      select: { id: true, networkId: true },
+    });
+    if (!studio) {
+      throw new NotFoundException('Студия не найдена');
+    }
+    const actorUser = await this.prisma.user.findUnique({
+      where: { id: actor.sub },
+      select: {
+        id: true,
+        role: true,
+        studioId: true,
+        studio: { select: { networkId: true } },
+        specialistProfile: {
+          select: {
+            studioId: true,
+            studios: { select: { studioId: true } },
+          },
+        },
+      },
+    });
+    if (!actorUser) {
+      throw new ForbiddenException('Пользователь не найден');
+    }
+    if (actor.role === UserRole.NetworkOwner) {
+      if (actorUser.studio?.networkId !== studio.networkId) {
+        throw new ForbiddenException('Нет доступа к этой сети');
+      }
+      return;
+    }
+    if (actor.role === UserRole.StudioAdmin) {
+      if (actorUser.studioId !== studio.id) {
+        throw new ForbiddenException('Нет доступа к этой студии');
+      }
+      return;
+    }
+    if (actor.role === UserRole.Specialist) {
+      const profile = actorUser.specialistProfile;
+      if (!profile) {
+        throw new ForbiddenException('Профиль специалиста не найден');
+      }
+      const canAccess = profile.studioId === studio.id || profile.studios.some((item) => item.studioId === studio.id);
+      if (!canAccess) {
+        throw new ForbiddenException('Специалист не работает в этой студии');
+      }
+      return;
+    }
+    throw new ForbiddenException('Недостаточно прав');
   }
 
   private async assertSlotAvailable(input: {

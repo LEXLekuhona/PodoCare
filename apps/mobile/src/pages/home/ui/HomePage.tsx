@@ -1,4 +1,5 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome'
+import { FontAwesome5 } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useCallback, useState } from 'react'
 import {
@@ -16,12 +17,13 @@ import { refreshNextAppointmentRemote } from '@/features/appointment/next-appoin
 import { cancelAppointmentByClient } from '@/features/booking/booking-api'
 import { useHomeScreenData } from '@/pages/home/model/useHomeScreenData'
 import { CancelAppointmentSheet } from '@/pages/home/ui/CancelAppointmentSheet'
+import { NextAppointmentCard } from './NextAppointmentCard'
 import { ApiError } from '@/shared/api/api-error'
 import { LeafLogo } from '@/shared/ui/icons/LeafLogo'
-import { FungusIcon } from '@/shared/ui/icons/concerns/FungusIcon'
-import { NailIcon } from '@/shared/ui/icons/concerns/NailIcon'
-import { SweatIcon } from '@/shared/ui/icons/concerns/SweatIcon'
+import { ConcernIcon } from '@/shared/ui/icons/concerns/ConcernIcon'
 import { SafeAreaPadding } from '@/shared/ui/safe-area'
+
+const FAQ_HOME_PREVIEW_COUNT = 3
 
 export function HomePage() {
   const {
@@ -30,7 +32,8 @@ export function HomePage() {
     reload,
     firstName,
     faq,
-    feedItems,
+    healthConcerns,
+    studioDirections,
     appointmentPresentation,
     selectedStudioId,
     studioLabel,
@@ -77,7 +80,7 @@ export function HomePage() {
           </RNView>
 
           <RNView pointerEvents="none" style={styles.headerCenter}>
-            <Text style={styles.brand}>PodoCare</Text>
+            <Text style={styles.brand}>Solodova Recovery System</Text>
           </RNView>
 
           <Pressable hitSlop={12} style={styles.iconBtn} onPress={() => {}}>
@@ -126,86 +129,12 @@ export function HomePage() {
 
         <View style={styles.section} lightColor="transparent" darkColor="transparent">
           <Text style={styles.sectionTitle}>Ближайшая запись</Text>
-          {appointmentPresentation ? (
-            <View style={styles.appointmentCard} lightColor="#FFFFFF" darkColor="#0C1A14">
-              <RNView style={styles.appointmentAccent} />
-              <View style={styles.appointmentTop} lightColor="transparent" darkColor="transparent">
-                <Text style={styles.appointmentTitleMini} lightColor="#1A1A2E" darkColor="#F5FBF7">
-                  Запись запланирована
-                </Text>
-                <View style={styles.whenDateRow} lightColor="transparent" darkColor="transparent">
-                  <Text style={styles.whenDate} lightColor="#0F5238" darkColor="#0F5238">
-                    {appointmentPresentation.dateLine}
-                  </Text>
-                  <View style={styles.statusPill} lightColor="rgba(149,163,160,0.16)" darkColor="rgba(255,255,255,0.10)">
-                    <Text style={styles.statusText} lightColor="rgba(11,27,20,0.65)" darkColor="rgba(255,255,255,0.65)">
-                      {appointmentPresentation.statusLabel}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={styles.whenTime} lightColor="#1A1A2E" darkColor="#F5FBF7">
-                  {appointmentPresentation.timeLine}
-                </Text>
-              </View>
-
-              <View style={styles.divider} lightColor="rgba(149,163,160,0.25)" darkColor="rgba(255,255,255,0.10)" />
-
-              <View style={styles.appointmentBottom} lightColor="transparent" darkColor="transparent">
-                <View style={styles.specAvatar} lightColor="rgba(45,106,79,0.10)" darkColor="rgba(149,212,179,0.14)" />
-                <View style={styles.specInfo} lightColor="transparent" darkColor="transparent">
-                  <Text style={styles.specName} lightColor="#1A1A2E" darkColor="#F5FBF7">
-                    {appointmentPresentation.specialistName}
-                  </Text>
-                  <Text style={styles.specService} lightColor="rgba(11,27,20,0.55)" darkColor="rgba(255,255,255,0.55)">
-                    {appointmentPresentation.serviceName}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.divider} lightColor="rgba(149,163,160,0.25)" darkColor="rgba(255,255,255,0.10)" />
-
-              <View style={styles.appointmentAddrRow} lightColor="transparent" darkColor="transparent">
-                <FontAwesome name="map-marker" size={14} color="rgba(11,27,20,0.55)" />
-                <Text style={styles.address} lightColor="#404943" darkColor="#404943">
-                  {appointmentPresentation.address}
-                </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Отменить запись"
-                  disabled={cancelSubmitting}
-                  onPress={onCancelAppointmentPress}
-                  style={({ pressed }) => [
-                    styles.cancelBtn,
-                    pressed && !cancelSubmitting && styles.pressed,
-                    cancelSubmitting && styles.cancelBtnDisabled,
-                  ]}
-                >
-                  <Text style={styles.cancelText} lightColor="#BA1A1A" darkColor="#BA1A1A">
-                    Отменить
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.emptyAppointment} lightColor="#FFFFFF" darkColor="#0C1A14">
-              <Text style={styles.emptyAppointmentTitle} lightColor="#1A1A2E" darkColor="#FFFFFF">
-                Нет предстоящих записей
-              </Text>
-              <Text style={styles.emptyAppointmentSub} lightColor="rgba(11,27,20,0.55)" darkColor="rgba(255,255,255,0.55)">
-                Выберите студию, затем специалиста, услугу и удобное время — или начните с каталога услуг.
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Записаться"
-                onPress={() => router.push('/(app)/(tabs)/booking')}
-                style={({ pressed }) => [styles.bookAppointmentBtn, pressed && styles.pressed]}
-              >
-                <Text style={styles.bookAppointmentBtnText} lightColor="#FFFFFF" darkColor="#FFFFFF">
-                  Записаться
-                </Text>
-              </Pressable>
-            </View>
-          )}
+          <NextAppointmentCard
+            appointment={appointmentPresentation}
+            cancelSubmitting={cancelSubmitting}
+            onCancelPress={onCancelAppointmentPress}
+            onBookPress={() => router.push('/(app)/(tabs)/booking')}
+          />
         </View>
 
         <View style={styles.section} lightColor="transparent" darkColor="transparent">
@@ -215,23 +144,20 @@ export function HomePage() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.concernsRow}
           >
-            {[
-              { t: 'Грибок', renderIcon: () => <FungusIcon size={18} /> },
-              { t: 'Вросший\nноготь', renderIcon: () => <NailIcon size={18} /> },
-              { t: 'Потливость', renderIcon: () => <SweatIcon size={18} /> },
-              { t: 'Пустота\nпод ногтем', renderIcon: () => <FontAwesome name="square-o" size={16} color="#2D6A4F" /> },
-              { t: 'Мозоли', renderIcon: () => <FontAwesome name="circle-o" size={16} color="#2D6A4F" /> },
-              { t: 'Трещины', renderIcon: () => <FontAwesome name="ellipsis-h" size={16} color="#2D6A4F" /> },
-            ].map((item) => (
+            {healthConcerns.map((item) => (
               <Pressable
-                key={item.t}
-                onPress={() => router.push('/(app)/(tabs)/booking')}
+                key={item.id}
+                onPress={() =>
+                  router.push(`/(app)/health-concern/${item.slug}` as any)
+                }
                 style={({ pressed }) => [styles.concern, pressed && styles.pressed]}
               >
                 <View style={styles.concernIcon}>
-                  {item.renderIcon()}
+                  <ConcernIcon slug={item.slug} title={item.title} size={18} color="#2D6A4F" />
                 </View>
-                <Text style={styles.concernText}>{item.t}</Text>
+                <Text style={styles.concernText} numberOfLines={2}>
+                  {item.title}
+                </Text>
               </Pressable>
             ))}
           </ScrollView>
@@ -240,53 +166,22 @@ export function HomePage() {
         <View style={styles.section} lightColor="transparent" darkColor="transparent">
           <View style={styles.sectionRow} lightColor="transparent" darkColor="transparent">
             <Text style={styles.sectionTitle}>Направления студии</Text>
-            <Pressable onPress={() => router.push('/(app)/service-selection')} style={({ pressed }) => [styles.sectionLink, pressed && styles.pressed]}>
-              <Text style={styles.sectionLinkText} lightColor="#2D6A4F" darkColor="#95D4B3">
-                Все услуги
-              </Text>
-            </Pressable>
           </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.specCardsRow}>
-            {[
-              {
-                title: 'Медицинский педикюр',
-                desc: 'Уход, обработка, профилактика',
-                price: 'от 2 500 ₽',
-                icon: 'leaf' as const,
-              },
-              {
-                title: 'Лечение ногтей',
-                desc: 'Грибок, вросший ноготь',
-                price: 'от 3 000 ₽',
-                icon: 'medkit' as const,
-              },
-              {
-                title: 'Ортониксия',
-                desc: 'Коррекция, сопровождение',
-                price: 'от 3 500 ₽',
-                icon: 'support' as const,
-              },
-            ].map((s) => (
+            {studioDirections.map((s) => (
               <Pressable
-                key={s.title}
-                onPress={() => router.push('/(app)/service-selection')}
+                key={s.id}
+                onPress={() => router.push(`/(app)/studio-direction/${s.slug}` as any)}
                 style={({ pressed }) => [styles.specCard, pressed && styles.pressed]}
               >
                 <RNView style={styles.specIconWrap}>
-                  <FontAwesome name={s.icon} size={22} color="#2D6A4F" />
+                  <FontAwesome5 name={s.iconKey as never} size={22} color="#2D6A4F" />
                 </RNView>
                 <RNView style={styles.specCardBody}>
                   <RNView style={styles.specCardTextBlock}>
-                    <Text style={styles.specCardName}>{s.title}</Text>
-                    <Text style={styles.specCardRole} lightColor="rgba(112,121,115,1)" darkColor="rgba(149,163,160,0.85)">
-                      {s.desc}
-                    </Text>
-                  </RNView>
-                  <RNView style={styles.specCardFooter}>
-                    <View style={styles.specCardDivider} lightColor="rgba(191,201,193,0.35)" darkColor="rgba(255,255,255,0.10)" />
-                    <Text style={styles.specCardPrice} lightColor="#2D6A4F" darkColor="#95D4B3">
-                      {s.price}
+                    <Text style={styles.specCardName} numberOfLines={4}>
+                      {s.title}
                     </Text>
                   </RNView>
                 </RNView>
@@ -295,37 +190,11 @@ export function HomePage() {
           </ScrollView>
         </View>
 
-        {feedItems.length > 0 ? (
-          <View style={styles.section} lightColor="transparent" darkColor="transparent">
-            <Text style={styles.sectionTitle}>Обучение</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.eduRow}>
-              {feedItems.slice(0, 12).map((item) => (
-                <Pressable
-                  key={item.id}
-                  onPress={() => router.push('/(app)/(tabs)/education')}
-                  style={({ pressed }) => [pressed && styles.pressed]}
-                >
-                  <View style={styles.eduCard} lightColor="#FFFFFF" darkColor="#0C1A14">
-                    <Text style={styles.eduCardTitle} lightColor="#1A1A2E" darkColor="#FFFFFF" numberOfLines={3}>
-                      {item.title}
-                    </Text>
-                    {item.description ? (
-                      <Text style={styles.eduCardDesc} lightColor="rgba(11,27,20,0.55)" darkColor="rgba(255,255,255,0.55)" numberOfLines={2}>
-                        {item.description}
-                      </Text>
-                    ) : null}
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        ) : null}
-
         {faq.length > 0 ? (
           <View style={styles.section} lightColor="transparent" darkColor="transparent">
             <Text style={styles.sectionTitle}>Популярные вопросы</Text>
             <View style={styles.faqList} lightColor="transparent" darkColor="transparent">
-              {faq.map((item) => {
+              {faq.slice(0, FAQ_HOME_PREVIEW_COUNT).map((item) => {
                 const open = expandedFaqId === item.id;
                 return (
                   <Pressable
@@ -493,69 +362,6 @@ const styles = StyleSheet.create({
     fontWeight: '800', 
     fontFamily: 'PlusJakartaSans_800ExtraBold' 
   },
-  emptyAppointment: {
-    borderRadius: 20,
-    padding: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(149,163,160,0.35)',
-    gap: 6,
-  },
-  emptyAppointmentTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-  },
-  emptyAppointmentSub: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '500',
-    fontFamily: 'Inter_500Medium',
-  },
-  bookAppointmentBtn: {
-    marginTop: 14,
-    alignSelf: 'flex-start',
-    minHeight: 48,
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: '#2D6A4F',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bookAppointmentBtnText: {
-    fontSize: 16,
-    fontWeight: '800',
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-  },
-  eduRow: {
-    gap: 12,
-    paddingRight: 8,
-  },
-  eduCard: {
-    width: 220,
-    minHeight: 110,
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(149,163,160,0.35)',
-    shadowColor: '#1A1A2E',
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  eduCardTitle: {
-    fontSize: 14,
-    fontWeight: '900',
-    lineHeight: 18,
-  },
-  eduCardDesc: {
-    marginTop: 8,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '500',
-    fontFamily: 'Inter_500Medium',
-  },
-  
   section: { 
     gap: 10, 
     paddingTop: 6 
@@ -583,106 +389,6 @@ const styles = StyleSheet.create({
     fontFamily: Platform.select({ ios: 'Liberation Serif', android: 'serif' }),
     color: '#1A1A2E',
   },
-  appointmentCard: {
-    borderRadius: 20,
-    padding: 16,
-    shadowColor: '#1A1A2E',
-    shadowOpacity: 0.06,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
-    gap: 12,
-    overflow: 'hidden',
-  },
-  appointmentAccent: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-    backgroundColor: '#75DAA8',
-    opacity: 0.35,
-  },
-  appointmentTop: {
-    gap: 4,
-  },
-  appointmentTitleMini: {
-    fontSize: 12,
-    fontFamily: 'Inter_600SemiBold',
-    opacity: 0.9,
-  },
-  whenDateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  whenDate: { 
-    fontSize: 14, 
-    fontWeight: '700' 
-  },
-  whenTime: { 
-    fontSize: 24, 
-    fontWeight: '700' 
-  },
-  statusPill: {
-    borderRadius: 9999,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(243,244,245,1)',
-  },
-  statusText: { 
-    fontSize: 12, 
-    fontWeight: '400' 
-  },
-  divider: {
-     height: StyleSheet.hairlineWidth 
-    },
-  appointmentBottom: {
-     flexDirection: 'row', 
-     gap: 12, 
-     alignItems: 'center' 
-    },
-  specAvatar: { 
-    width: 44, 
-    height: 44, 
-    borderRadius: 9999 
-  },
-  specInfo: { 
-    flex: 1, 
-    gap: 4 
-  },
-  specName: { 
-    fontSize: 14, 
-    fontWeight: '600' 
-  },
-  specService: { 
-    fontSize: 13, 
-    fontWeight: '400' 
-  },
-  appointmentAddrRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 6 
-  },
-  address: { 
-    flex: 1, 
-    fontSize: 12, 
-    fontWeight: '600' 
-  },
-  cancelBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    minWidth: 88,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelBtnDisabled: {
-    opacity: 0.55,
-  },
-  cancelText: { 
-    fontSize: 14,
-    fontWeight: 'medium' 
-  },
   concernsRow: {
     gap: 10,
     paddingRight: 8,
@@ -706,6 +412,7 @@ const styles = StyleSheet.create({
     borderRadius: 12, 
     alignItems: 'center', 
     justifyContent: 'center',
+    backgroundColor: 'rgba(45,106,79,0.08)',
   },
   concernText: { 
     textAlign: 'center', 
@@ -719,7 +426,7 @@ const styles = StyleSheet.create({
   },
   specCard: {
     width: 190,
-    minHeight: 212,
+    height: 228,
     alignSelf: 'stretch',
     borderRadius: 18,
     padding: 16,
@@ -744,10 +451,8 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     alignItems: 'center',
-  },
-  specCardFooter: {
-    width: '100%',
-    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 0,
   },
   specIconWrap: {
     width: 72,
@@ -762,22 +467,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     textAlign: 'center',
-  },
-  specCardRole: {
-    marginTop: 6,
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  specCardDivider: {
-    marginTop: 0,
-    width: '100%',
-    height: StyleSheet.hairlineWidth,
-  },
-  specCardPrice: {
-    marginTop: 10,
-    fontSize: 16,
-    fontWeight: '900',
   },
   faqList: {
     gap: 12,

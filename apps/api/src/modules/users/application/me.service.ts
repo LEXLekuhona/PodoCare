@@ -5,12 +5,19 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConsentType, Prisma } from '@prisma/client';
+import { AppointmentStatus } from '@srs/shared-types';
 
+import { CryptoService } from '../../../infrastructure/crypto/crypto.service';
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
+import { TreatmentPlansService } from './treatment-plans.service';
 
 @Injectable()
 export class MeService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cryptoService: CryptoService,
+    private readonly treatmentPlansService: TreatmentPlansService,
+  ) {}
 
   private consentTitleRu(type: ConsentType): string {
     switch (type) {
@@ -89,6 +96,193 @@ export class MeService {
     };
   }
 
+  async getMedicalCard(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        birthDate: true,
+      },
+    });
+    if (!user) throw new NotFoundException('Пользователь не найден');
+
+    const [medicalCard, visits, latestPlan] = await Promise.all([
+      this.prisma.clientMedicalCard.findUnique({
+        where: { userId },
+        select: {
+          dataEncrypted: true,
+          dataIv: true,
+          dataAuthTag: true,
+          keyVersion: true,
+          updatedAt: true,
+        },
+      }),
+      this.prisma.appointment.findMany({
+        where: {
+          clientUserId: userId,
+          status: {
+            notIn: [AppointmentStatus.CancelledByClient, AppointmentStatus.CancelledByStudio],
+          },
+        },
+        orderBy: [{ startsAt: 'desc' }],
+        take: 20,
+        select: {
+          id: true,
+          startsAt: true,
+          specialistNote: true,
+          service: {
+            select: {
+              name: true,
+            },
+          },
+          specialist: {
+            select: {
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+            },
+          },
+          protocol: {
+            select: {
+              diagnosis: true,
+              proceduresDone: true,
+              clientVisible: true,
+            },
+          },
+        },
+      }),
+      this.prisma.treatmentPlan.findFirst({
+        where: {
+          clientUserId: userId,
+          status: 'ACTIVE',
+        },
+        orderBy: [{ validFrom: 'desc' }],
+        select: {
+          validFrom: true,
+          steps: true,
+          author: {
+            select: {
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const cardData = this.parseMedicalCardPayload(medicalCard);
+    const planSteps = this.parseTreatmentSteps(latestPlan?.steps);
+    const specialistName = latestPlan
+      ? `${latestPlan.author.firstName} ${latestPlan.author.lastName}`.trim()
+      : null;
+
+    const history = visits.map((visit) => {
+      const diagnosis =
+        visit.protocol && visit.protocol.clientVisible ? (visit.protocol.diagnosis?.trim() ?? null) : null;
+      const actions =
+        visit.protocol && visit.protocol.clientVisible
+          ? visit.protocol.proceduresDone.filter((item) => item.trim() !== '')
+          : [];
+      const summary = diagnosis ?? visit.specialistNote?.trim() ?? null;
+      return {
+        id: visit.id,
+        startsAt: visit.startsAt.toISOString(),
+        specialistName: `${visit.specialist.user.firstName} ${visit.specialist.user.lastName}`.trim(),
+        specialistRole: 'Подолог',
+        serviceLabel: visit.service.name,
+        summary,
+        diagnosis,
+        actions,
+        recommendations: visit.specialistNote?.trim() ?? null,
+      };
+    });
+
+    return {
+      basics: {
+        birthDate: user.birthDate ? user.birthDate.toISOString().slice(0, 10) : null,
+        allergies: cardData.allergies,
+        chronicConditions: cardData.chronicConditions,
+        contraindications: cardData.contraindications,
+      },
+      specialist: {
+        contraindications: cardData.contraindications,
+        plan: planSteps,
+        recommendations: history[0]?.recommendations ?? null,
+        filledAt: latestPlan?.validFrom ? latestPlan.validFrom.toISOString() : null,
+        specialistName,
+        specialistRole: specialistName ? 'Ведущий подолог' : null,
+      },
+      history,
+    };
+  }
+
+  async getTreatmentPlans(userId: string) {
+    return this.treatmentPlansService.listForMe(userId);
+  }
+
+  private parseMedicalCardPayload(input: {
+    dataEncrypted: Uint8Array | null;
+    dataIv: Uint8Array | null;
+    dataAuthTag: Uint8Array | null;
+    keyVersion: number;
+  } | null): {
+    allergies: string | null;
+    chronicConditions: string | null;
+    contraindications: string | null;
+  } {
+    if (!input?.dataEncrypted || !input.dataIv || !input.dataAuthTag) {
+      return {
+        allergies: null,
+        chronicConditions: null,
+        contraindications: null,
+      };
+    }
+    try {
+      const plain = this.cryptoService.decrypt({
+        cipherText: Buffer.from(input.dataEncrypted),
+        iv: Buffer.from(input.dataIv),
+        authTag: Buffer.from(input.dataAuthTag),
+        keyVersion: input.keyVersion,
+      });
+      const parsed = JSON.parse(plain) as {
+        allergies?: unknown;
+        chronicConditions?: unknown;
+        contraindications?: unknown;
+      };
+      return {
+        allergies: this.pickString(parsed.allergies),
+        chronicConditions: this.pickString(parsed.chronicConditions),
+        contraindications: this.pickString(parsed.contraindications),
+      };
+    } catch {
+      return {
+        allergies: null,
+        chronicConditions: null,
+        contraindications: null,
+      };
+    }
+  }
+
+  private parseTreatmentSteps(raw: Prisma.JsonValue | null | undefined): string[] {
+    if (!Array.isArray(raw)) return [];
+    const items: string[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+      const text = this.pickString((item as Record<string, unknown>).text);
+      if (text) items.push(text);
+    }
+    return items;
+  }
+
+  private pickString(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const next = value.trim();
+    return next === '' ? null : next;
+  }
+
   private normalizeOptionalEmail(raw: string | undefined): string | null | undefined {
     if (raw === undefined) return undefined;
     const t = raw.trim();
@@ -121,20 +315,13 @@ export class MeService {
     if (raw === undefined) return undefined;
     const t = raw.trim();
     if (t === '') return null;
-    if (t.length > 600000) {
-      throw new BadRequestException('Слишком большое изображение');
+    if (!/^https?:\/\//i.test(t)) {
+      throw new BadRequestException(
+        'Аватар: укажите https-ссылку. Для загрузки файла используйте POST /me/avatar.',
+      );
     }
-    const isHttp = /^https?:\/\//i.test(t);
-    const dataMatch = /^data:image\/(jpeg|jpg|png|webp);base64,(.+)$/is.exec(t);
-    const isData = Boolean(dataMatch);
-    if (!isHttp && !isData) {
-      throw new BadRequestException('Аватар: укажите http(s)-ссылку или data URI изображения (jpeg/png/webp)');
-    }
-    if (isData && dataMatch) {
-      const b64 = dataMatch[2]?.replace(/\s/g, '') ?? '';
-      if (!/^[A-Za-z0-9+/=]+$/.test(b64)) {
-        throw new BadRequestException('Некорректные данные изображения');
-      }
+    if (t.length > 2000) {
+      throw new BadRequestException('URL аватара слишком длинный');
     }
     return t;
   }

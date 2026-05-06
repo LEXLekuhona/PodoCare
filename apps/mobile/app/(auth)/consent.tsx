@@ -1,4 +1,4 @@
-import { ConsentType } from '@podocare/shared-types';
+import { ConsentType } from '@srs/shared-types';
 import { router } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useState } from 'react';
@@ -22,7 +22,7 @@ export default function PrivacyConsentScreen() {
         <View style={styles.topRow} lightColor="transparent" darkColor="transparent">
           <View style={styles.brand} lightColor="transparent" darkColor="transparent">
             <LeafLogo size={28} color="#707973" />
-            <Text style={styles.brandText}>PodoCare</Text>
+            <Text style={styles.brandText}>Solodova Recovery System</Text>
           </View>
           <Pressable accessibilityLabel="Уведомления" style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}>
             <FontAwesome name="bell-o" size={18} color="#0F5238" />
