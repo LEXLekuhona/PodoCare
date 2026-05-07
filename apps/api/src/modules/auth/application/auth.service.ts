@@ -1,19 +1,25 @@
+/* eslint-disable import/order */
 import { randomInt } from 'node:crypto';
 
-import { normalizePhone } from '../../../common/utils/normalize-phone';
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { ConfigService } from '@nestjs/config';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { JwtService } from '@nestjs/jwt';
-import type { OtpCode, User } from '@prisma/client';
-import argon2 from 'argon2';
 import { UserRole } from '@srs/shared-types';
+import argon2 from 'argon2';
+
+import { normalizePhone } from '../../../common/utils/normalize-phone';
 
 import type { JwtConfig } from '../../../config/jwt.config';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { CryptoService } from '../../../infrastructure/crypto/crypto.service';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
-import { RequestOtpDto } from '../presentation/dto/request-otp.dto';
-import { StaffLoginDto } from '../presentation/dto/staff-login.dto';
-import { VerifyOtpDto } from '../presentation/dto/verify-otp.dto';
+import type { RequestOtpDto } from '../presentation/dto/request-otp.dto';
+import type { StaffLoginDto } from '../presentation/dto/staff-login.dto';
+import type { VerifyOtpDto } from '../presentation/dto/verify-otp.dto';
+import type { OtpCode, User } from '@prisma/client';
 
 interface JwtBasePayload {
   sub: string;
@@ -53,6 +59,7 @@ export interface RequestOtpResponse {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private readonly otpCodeLength: number;
   private readonly otpTtlSeconds: number;
   private readonly otpMaxAttempts: number;
@@ -417,19 +424,22 @@ export class AuthService {
       this.sendOtp(phone, code);
     } catch (err) {
       // Не падаем — OTP уже создан в БД. Логируем для алертов.
-      console.error(`[OTP] Failed to send to ${phone}:`, err);
+      const error = err as unknown;
+      if (error instanceof Error) {
+        this.logger.error(`[OTP] Failed to send to ${phone}`, error.stack);
+      } else {
+        this.logger.error(`[OTP] Failed to send to ${phone}: ${String(error)}`);
+      }
     }
   }
   
   private sendOtp(phone: string, code: string): void {
     if (this.otpProvider === 'console' || this.nodeEnv !== 'production') {
-      console.log(`[OTP] ${phone}: ${code}`);
+      // В тестах `LOG_LEVEL=silent`, поэтому это не будет шуметь в e2e.
+      this.logger.debug(`[OTP][console] ${phone}: ${code}`);
       return;
     }
-    console.warn(
-      `OTP provider "${this.otpProvider}" не подключен. Код отправлен в console fallback.`,
-    );
-    console.log(`[OTP] ${phone}: ${code}`);
+    throw new Error(`OTP provider "${this.otpProvider}" не подключен для production окружения`);
   }
 
 

@@ -89,7 +89,12 @@ export class CreateContentItemDto {
   @IsString({ each: true })
   tags?: string[];
 
-  @ApiPropertyOptional({ enum: ['draft', 'published'], default: 'draft' })
+  @ApiPropertyOptional({
+    enum: ['draft', 'published'],
+    default: 'draft',
+    description:
+      'Публикация единицы (контракт content.publicationState). В ленту попадают только опубликованные item + опубликованная серия.',
+  })
   @IsOptional()
   @IsIn(['draft', 'published'])
   status?: 'draft' | 'published';

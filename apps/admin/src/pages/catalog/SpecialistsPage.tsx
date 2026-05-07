@@ -79,6 +79,7 @@ interface ShiftModalState {
   specialistLabel: string;
   activeTab: 'single' | 'bulk' | 'list';
   listStudioId: string;
+  showCancelled: boolean;
   calendarAnchorDate: string;
   selectedDate: string;
   studioOptions: { id: string; name: string; city: string }[];
@@ -90,6 +91,7 @@ interface ShiftModalState {
   bulkWeekdays: number[];
   bulkStartTime: string;
   bulkEndTime: string;
+  editingShiftId: string | null;
   rows: ShiftRow[];
   loading: boolean;
   saving: boolean;
@@ -158,14 +160,6 @@ function toggleCategoryId(ids: string[], categoryId: string, on: boolean): strin
   return [...set];
 }
 
-function datetimeLocalToIso(value: string): string {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) {
-    throw new Error('Некорректная дата/время');
-  }
-  return d.toISOString();
-}
-
 function toDatetimeLocalDefault(date: Date): string {
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -227,6 +221,25 @@ function addDays(date: Date, days: number): Date {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
   return next;
+}
+
+function startOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addMonths(date: Date, months: number): Date {
+  const d = new Date(date);
+  d.setMonth(d.getMonth() + months);
+  return d;
+}
+
+function shiftStatusTone(status: string): 'ok' | 'muted' | 'warn' | 'danger' {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === 'cancelled') return 'muted';
+  if (normalized === 'completed') return 'muted';
+  if (normalized === 'active') return 'ok';
+  if (normalized === 'scheduled') return 'ok';
+  return 'warn';
 }
 
 function startOfWeekMonday(date: Date): Date {
@@ -557,6 +570,7 @@ export function SpecialistsPage() {
       specialistLabel: `${row.lastName} ${row.firstName}${row.middleName ? ` ${row.middleName}` : ''}`,
       activeTab: 'list',
       listStudioId: '',
+      showCancelled: false,
       calendarAnchorDate: todayKey,
       selectedDate: todayKey,
       studioOptions,
@@ -568,6 +582,7 @@ export function SpecialistsPage() {
       bulkWeekdays: [1, 2, 3, 4, 5],
       bulkStartTime: '10:00',
       bulkEndTime: '19:00',
+      editingShiftId: null,
       rows: [],
       loading: true,
       saving: false,
@@ -596,16 +611,13 @@ export function SpecialistsPage() {
       setShiftModal({ ...shiftModal, error: 'Выберите студию' });
       return;
     }
-    let startsAt: string;
-    let endsAt: string;
-    try {
-      startsAt = datetimeLocalToIso(shiftModal.startsAtLocal);
-      endsAt = datetimeLocalToIso(shiftModal.endsAtLocal);
-    } catch (e) {
-      setShiftModal({ ...shiftModal, error: e instanceof Error ? e.message : 'Некорректная дата' });
+    const startsAtLocal = shiftModal.startsAtLocal.trim();
+    const endsAtLocal = shiftModal.endsAtLocal.trim();
+    if (!startsAtLocal || !endsAtLocal) {
+      setShiftModal({ ...shiftModal, error: 'Укажите дату и время начала и конца смены' });
       return;
     }
-    if (new Date(endsAt) <= new Date(startsAt)) {
+    if (new Date(endsAtLocal) <= new Date(startsAtLocal)) {
       setShiftModal({ ...shiftModal, error: 'Конец смены должен быть позже начала' });
       return;
     }
@@ -617,8 +629,8 @@ export function SpecialistsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studioId: shiftModal.studioId,
-          startsAt,
-          endsAt,
+          startsAtLocal,
+          endsAtLocal,
         }),
       });
       const rows = await apiRequest<ShiftRow[]>(`/admin/catalog/specialists/${shiftModal.specialistId}/shifts`);
@@ -647,7 +659,7 @@ export function SpecialistsPage() {
 
   async function removeShift(shiftId: string) {
     if (!shiftModal) return;
-    if (!globalThis.confirm('Удалить эту смену?')) return;
+    if (!globalThis.confirm('Отменить эту смену?')) return;
     setShiftModal({ ...shiftModal, error: null });
     try {
       await apiRequest(`/admin/catalog/specialists/${shiftModal.specialistId}/shifts/${shiftId}`, {
@@ -657,7 +669,79 @@ export function SpecialistsPage() {
       setShiftModal((prev) => (prev ? { ...prev, rows } : prev));
     } catch (e) {
       setShiftModal((prev) =>
-        prev ? { ...prev, error: e instanceof ApiError ? e.message : 'Не удалось удалить смену' } : prev,
+        prev ? { ...prev, error: e instanceof ApiError ? e.message : 'Не удалось отменить смену' } : prev,
+      );
+    }
+  }
+
+  async function startEditShift(row: ShiftRow) {
+    if (!shiftModal) return;
+    setShiftModal({
+      ...shiftModal,
+      activeTab: 'single',
+      editingShiftId: row.id,
+      studioId: row.studio.id,
+      startsAtLocal: toDatetimeLocalDefault(new Date(row.startsAt)),
+      endsAtLocal: toDatetimeLocalDefault(new Date(row.endsAt)),
+      error: null,
+    });
+  }
+
+  async function saveEditedShift() {
+    if (!shiftModal) return;
+    if (!shiftModal.editingShiftId) return;
+    if (!shiftModal.studioId) {
+      setShiftModal({ ...shiftModal, error: 'Выберите студию' });
+      return;
+    }
+    const startsAtLocal = shiftModal.startsAtLocal.trim();
+    const endsAtLocal = shiftModal.endsAtLocal.trim();
+    if (!startsAtLocal || !endsAtLocal) {
+      setShiftModal({ ...shiftModal, error: 'Укажите дату и время начала и конца смены' });
+      return;
+    }
+    if (new Date(endsAtLocal) <= new Date(startsAtLocal)) {
+      setShiftModal({ ...shiftModal, error: 'Конец смены должен быть позже начала' });
+      return;
+    }
+    setShiftModal({ ...shiftModal, saving: true, error: null });
+    try {
+      await apiRequest(
+        `/admin/catalog/specialists/${shiftModal.specialistId}/shifts/${shiftModal.editingShiftId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            studioId: shiftModal.studioId,
+            startsAtLocal,
+            endsAtLocal,
+          }),
+        },
+      );
+      const rows = await apiRequest<ShiftRow[]>(
+        `/admin/catalog/specialists/${shiftModal.specialistId}/shifts`,
+      );
+      setShiftModal((prev) =>
+        prev
+          ? {
+              ...prev,
+              rows,
+              saving: false,
+              editingShiftId: null,
+              activeTab: 'list',
+              error: null,
+            }
+          : prev,
+      );
+    } catch (e) {
+      setShiftModal((prev) =>
+        prev
+          ? {
+              ...prev,
+              saving: false,
+              error: e instanceof ApiError ? e.message : 'Не удалось сохранить смену',
+            }
+          : prev,
       );
     }
   }
@@ -855,6 +939,7 @@ export function SpecialistsPage() {
     if (!shiftModal) return [];
     return shiftModal.rows
       .filter((row) => (shiftModal.listStudioId ? row.studio.id === shiftModal.listStudioId : true))
+      .filter((row) => (shiftModal.showCancelled ? true : row.status.trim().toLowerCase() !== 'cancelled'))
       .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
   }, [shiftModal]);
 
@@ -872,7 +957,7 @@ export function SpecialistsPage() {
     const anchor = parseDateKey(shiftModal.calendarAnchorDate);
     const now = new Date();
     const todayKey = shiftDateKey(now.toISOString());
-    const monthStart = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+    const monthStart = startOfMonth(anchor);
     const gridStart = startOfWeekMonday(monthStart);
     const monthIndex = monthStart.getMonth();
     return Array.from({ length: 42 }).map((_, idx) => {
@@ -1510,7 +1595,9 @@ export function SpecialistsPage() {
 
             {shiftModal.activeTab === 'single' ? (
               <div className="shift-section-card">
-                <p className="shift-helper-text">Быстрое добавление одной конкретной смены.</p>
+                <p className="shift-helper-text">
+                  {shiftModal.editingShiftId ? 'Редактирование смены.' : 'Быстрое добавление одной конкретной смены.'}
+                </p>
                 <div className="modal-grid-single-shift" style={{ marginBottom: 0 }}>
                   <div className="field" style={{ margin: 0 }}>
                     <label htmlFor="shift-studio">Студия</label>
@@ -1547,11 +1634,31 @@ export function SpecialistsPage() {
                   <button
                     type="button"
                     className="primary"
-                    onClick={() => void addShift()}
+                    onClick={() => (shiftModal.editingShiftId ? void saveEditedShift() : void addShift())}
                     disabled={shiftModal.saving}
                   >
-                    {shiftModal.saving ? 'Добавление…' : 'Добавить смену'}
+                    {shiftModal.saving
+                      ? 'Сохранение…'
+                      : shiftModal.editingShiftId
+                        ? 'Сохранить'
+                        : 'Добавить смену'}
                   </button>
+                  {shiftModal.editingShiftId ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setShiftModal({
+                          ...shiftModal,
+                          editingShiftId: null,
+                          activeTab: 'list',
+                          error: null,
+                        })
+                      }
+                      disabled={shiftModal.saving}
+                    >
+                      Отмена
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -1673,6 +1780,14 @@ export function SpecialistsPage() {
                       ))}
                     </select>
                   </div>
+                  <label className="modal-toggle" style={{ marginLeft: 'auto' }}>
+                    <input
+                      type="checkbox"
+                      checked={shiftModal.showCancelled}
+                      onChange={(ev) => setShiftModal({ ...shiftModal, showCancelled: ev.target.checked })}
+                    />{' '}
+                    Показывать отменённые
+                  </label>
                   <span className="badge">Календарь: месяц</span>
                 </div>
 
@@ -1687,15 +1802,22 @@ export function SpecialistsPage() {
                           setShiftModal({
                             ...shiftModal,
                             calendarAnchorDate: shiftDateKey(
-                              addDays(
-                                parseDateKey(shiftModal.calendarAnchorDate),
-                                -30,
-                              ).toISOString(),
+                              addMonths(parseDateKey(shiftModal.calendarAnchorDate), -1).toISOString(),
                             ),
                           })
                         }
                       >
                         ←
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const now = new Date();
+                          const todayKey = shiftDateKey(now.toISOString());
+                          setShiftModal({ ...shiftModal, calendarAnchorDate: todayKey, selectedDate: todayKey });
+                        }}
+                      >
+                        Сегодня
                       </button>
                       <strong className="shift-calendar-title">{calendarMonthLabel}</strong>
                       <button
@@ -1704,10 +1826,7 @@ export function SpecialistsPage() {
                           setShiftModal({
                             ...shiftModal,
                             calendarAnchorDate: shiftDateKey(
-                              addDays(
-                                parseDateKey(shiftModal.calendarAnchorDate),
-                                30,
-                              ).toISOString(),
+                              addMonths(parseDateKey(shiftModal.calendarAnchorDate), 1).toISOString(),
                             ),
                           })
                         }
@@ -1754,10 +1873,27 @@ export function SpecialistsPage() {
                                 </div>
                               </div>
                               <div className="shift-card-meta">
-                                <span className="badge">{shiftStatusLabel(r.status)}</span>
-                                <button type="button" className="danger" onClick={() => void removeShift(r.id)}>
-                                  Удалить
-                                </button>
+                                <span
+                                  className={`badge${
+                                    shiftStatusTone(r.status) === 'muted'
+                                      ? ''
+                                      : shiftStatusTone(r.status) === 'danger'
+                                        ? ' danger'
+                                        : shiftStatusTone(r.status) === 'warn'
+                                          ? ' warn'
+                                          : ' success'
+                                  }`}
+                                >
+                                  {shiftStatusLabel(r.status)}
+                                </span>
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                  <button type="button" onClick={() => void startEditShift(r)}>
+                                    Изменить
+                                  </button>
+                                  <button type="button" className="danger" onClick={() => void removeShift(r.id)}>
+                                    Отменить
+                                  </button>
+                                </div>
                               </div>
                             </article>
                           ))}

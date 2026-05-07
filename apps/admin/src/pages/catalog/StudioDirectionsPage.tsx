@@ -1,4 +1,3 @@
-import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
@@ -9,6 +8,8 @@ import { slugify } from '../../lib/identifiers';
 import { canMutateTenantCatalog } from '../../lib/roles';
 import { FilterBar } from '../../ui/FilterBar';
 import { useToast } from '../../ui/ToastContext';
+
+import type { FormEvent } from 'react';
 
 /** Синхронизировано с API `STUDIO_DIRECTION_ICON_KEYS`. */
 const ICON_OPTIONS: Array<{ value: string; label: string }> = [

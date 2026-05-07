@@ -1,10 +1,14 @@
+/* eslint-disable import/order */
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
-import { UserRole } from '@srs/shared-types';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
+
 import type { JwtConfig } from '../../../config/jwt.config';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
+import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
+import type { UserRole } from '@srs/shared-types';
 
 export interface JwtAccessPayload {
   sub: string;
@@ -31,7 +35,12 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       where: { id: payload.sessionId },
       select: { revokedAt: true, expiresAt: true, user: { select: { isActive: true } } },
     });
-    if (!session || session.revokedAt !== null || !session.user.isActive) {
+    if (
+      !session ||
+      session.revokedAt !== null ||
+      session.expiresAt.getTime() <= Date.now() ||
+      !session.user.isActive
+    ) {
       throw new UnauthorizedException('Сессия недействительна');
     }
     return payload;

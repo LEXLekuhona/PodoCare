@@ -1,5 +1,5 @@
 {
-  "extends": "@srs/tsconfig/nestjs.json",
+  "extends": "../../packages/tsconfig/nestjs.json",
   "compilerOptions": {
     "composite": true,
     "outDir": "./dist",

@@ -1,16 +1,17 @@
-import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
+import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import type { NotificationsConfig } from '../../config/notifications.config';
-import { NotificationsService } from './application/notifications.service';
 import { NOTIFICATIONS_QUEUE } from './application/notifications.jobs';
+import { NotificationsService } from './application/notifications.service';
 import { ConsoleSmsProvider } from './infrastructure/providers/console-sms.provider';
 import { SMS_PROVIDER_TOKEN } from './infrastructure/providers/sms-provider.port';
 import { SmsRuProvider } from './infrastructure/providers/sms-ru.provider';
 import { PushDeliveryService } from './infrastructure/push/push-delivery.service';
 import { NotificationsProcessor } from './infrastructure/queue/notifications.processor';
 import { NotificationsController } from './presentation/notifications.controller';
+
+import type { NotificationsConfig } from '../../config/notifications.config';
 
 @Module({
   imports: [

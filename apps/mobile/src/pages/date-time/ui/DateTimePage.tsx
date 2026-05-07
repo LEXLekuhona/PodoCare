@@ -117,6 +117,14 @@ export function DateTimePage() {
   const canContinue =
     !!studioId && !!specialistId && !!serviceId && !!slotKey && !!selectedSlot?.available;
 
+  const selectedDay = useMemo(() => (dayKey ? days.find((d) => d.date === dayKey) : undefined), [days, dayKey]);
+  const nearestAvailable = useMemo(() => {
+    const day = days.find((d) => d.slots.some((s) => s.available));
+    if (!day) return null;
+    const slot = day.slots.find((s) => s.available) ?? null;
+    return slot ? { dayKey: day.date, slotKey: slot.startsAt } : null;
+  }, [days]);
+
   const onContinue = () => {
     if (!canContinue || !slotKey || !selectedSlot?.available) return;
     router.push({
@@ -167,12 +175,9 @@ export function DateTimePage() {
                 return (
                   <Pressable
                     key={d.date}
-                    disabled={muted}
                     onPress={() => {
                       setDayKey(d.date);
-                      const next =
-                        d.slots.find((s) => s.available)?.startsAt ??
-                        (d.slots.length ? d.slots[0].startsAt : null);
+                      const next = d.slots.find((s) => s.available)?.startsAt ?? null;
                       setSlotKey(next);
                     }}
                     style={({ pressed }) => [
@@ -238,10 +243,48 @@ export function DateTimePage() {
                   );
                 })}
               </View>
-              {slotsForDay.length === 0 ? (
-                <Text style={styles.emptySlots} lightColor="rgba(11,27,20,0.55)" darkColor="rgba(255,255,255,0.45)">
-                  На этот день нет доступных слотов
-                </Text>
+              {selectedDay?.disabled ? (
+                <>
+                  <Text
+                    style={styles.emptySlots}
+                    lightColor="rgba(11,27,20,0.55)"
+                    darkColor="rgba(255,255,255,0.45)"
+                  >
+                    {selectedDay.disabledReason ?? 'На этот день нет доступного времени'}
+                  </Text>
+                  {nearestAvailable ? (
+                    <Pressable
+                      onPress={() => {
+                        setDayKey(nearestAvailable.dayKey);
+                        setSlotKey(nearestAvailable.slotKey);
+                      }}
+                      style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
+                    >
+                      <Text style={styles.retryText}>Показать ближайшее доступное</Text>
+                    </Pressable>
+                  ) : null}
+                </>
+              ) : slotsForDay.length === 0 ? (
+                <>
+                  <Text
+                    style={styles.emptySlots}
+                    lightColor="rgba(11,27,20,0.55)"
+                    darkColor="rgba(255,255,255,0.45)"
+                  >
+                    На этот день нет свободного времени
+                  </Text>
+                  {nearestAvailable ? (
+                    <Pressable
+                      onPress={() => {
+                        setDayKey(nearestAvailable.dayKey);
+                        setSlotKey(nearestAvailable.slotKey);
+                      }}
+                      style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
+                    >
+                      <Text style={styles.retryText}>Показать ближайшее доступное</Text>
+                    </Pressable>
+                  ) : null}
+                </>
               ) : null}
             </View>
           </>

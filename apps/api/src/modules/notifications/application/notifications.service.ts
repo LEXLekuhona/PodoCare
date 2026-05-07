@@ -1,19 +1,17 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+/* eslint-disable import/order */
 import { InjectQueue } from '@nestjs/bullmq';
-import { Prisma } from '@prisma/client';
-import { Job, Queue } from 'bullmq';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
+import { ConfigService } from '@nestjs/config';
 import {
   NotificationChannel,
   NotificationStatus,
-  NotificationTemplateKey,
   NotificationType,
-  PushProvider,
   SmsProvider as SharedSmsProvider,
+  UserRole,
 } from '@srs/shared-types';
 
-import type { NotificationsConfig } from '../../../config/notifications.config';
-import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
+
 import {
   NOTIFICATIONS_QUEUE,
   NOTIFICATIONS_SMS_JOB,
@@ -28,6 +26,16 @@ import { type UpdateReminderPolicyDto } from '../presentation/dto/update-reminde
 import { type UpsertNotificationPreferenceDto } from '../presentation/dto/upsert-notification-preference.dto';
 import { type UpsertPushDeviceDto } from '../presentation/dto/upsert-push-device.dto';
 
+import type { NotificationsConfig } from '../../../config/notifications.config';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
+import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
+import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
+import type { Prisma } from '@prisma/client';
+import type {
+  NotificationTemplateKey,
+  PushProvider} from '@srs/shared-types';
+import type { Job, Queue } from 'bullmq';
+
 @Injectable()
 export class NotificationsService {
   private readonly queueName: string;
@@ -40,8 +48,9 @@ export class NotificationsService {
     this.queueName = this.configService.getOrThrow<NotificationsConfig>('notifications').queueName;
   }
 
-  async createTemplate(dto: CreateNotificationTemplateDto) {
+  async createTemplate(actor: JwtAccessPayload, dto: CreateNotificationTemplateDto) {
     await this.ensureNetworkExists(dto.networkId);
+    await this.assertActorCanManageNetwork(actor, dto.networkId);
     return this.prisma.notificationTemplate.create({
       data: {
         networkId: dto.networkId,
@@ -57,15 +66,18 @@ export class NotificationsService {
     });
   }
 
-  listTemplates(params: {
+  async listTemplates(
+    actor: JwtAccessPayload,
+    params: {
     networkId?: string;
     channel?: NotificationChannel;
     key?: NotificationTemplateKey;
     activeOnly?: boolean;
   }) {
+    const networkId = await this.resolveScopedNetworkId(actor, params.networkId);
     return this.prisma.notificationTemplate.findMany({
       where: {
-        networkId: params.networkId,
+        networkId,
         channel: params.channel,
         key: params.key,
         ...(params.activeOnly ? { isActive: true } : {}),
@@ -74,11 +86,11 @@ export class NotificationsService {
     });
   }
 
-  async updateTemplate(id: string, dto: UpdateNotificationTemplateDto) {
-    await this.ensureTemplateExists(id);
-    if (dto.networkId) {
-      await this.ensureNetworkExists(dto.networkId);
-    }
+  async updateTemplate(actor: JwtAccessPayload, id: string, dto: UpdateNotificationTemplateDto) {
+    const existing = await this.ensureTemplateExists(id);
+    const targetNetworkId = dto.networkId ?? existing.networkId;
+    await this.ensureNetworkExists(targetNetworkId);
+    await this.assertActorCanManageNetwork(actor, targetNetworkId);
     return this.prisma.notificationTemplate.update({
       where: { id },
       data: {
@@ -95,8 +107,9 @@ export class NotificationsService {
     });
   }
 
-  async createReminderPolicy(dto: CreateReminderPolicyDto) {
+  async createReminderPolicy(actor: JwtAccessPayload, dto: CreateReminderPolicyDto) {
     await this.ensureNetworkExists(dto.networkId);
+    await this.assertActorCanManageNetwork(actor, dto.networkId);
     return this.prisma.reminderPolicy.create({
       data: {
         networkId: dto.networkId,
@@ -109,21 +122,22 @@ export class NotificationsService {
     });
   }
 
-  listReminderPolicies(params: { networkId?: string; activeOnly?: boolean }) {
+  async listReminderPolicies(actor: JwtAccessPayload, params: { networkId?: string; activeOnly?: boolean }) {
+    const networkId = await this.resolveScopedNetworkId(actor, params.networkId);
     return this.prisma.reminderPolicy.findMany({
       where: {
-        networkId: params.networkId,
+        networkId,
         ...(params.activeOnly ? { isActive: true } : {}),
       },
       orderBy: [{ offsetMinutesBefore: 'desc' }, { updatedAt: 'desc' }],
     });
   }
 
-  async updateReminderPolicy(id: string, dto: UpdateReminderPolicyDto) {
-    await this.ensureReminderPolicyExists(id);
-    if (dto.networkId) {
-      await this.ensureNetworkExists(dto.networkId);
-    }
+  async updateReminderPolicy(actor: JwtAccessPayload, id: string, dto: UpdateReminderPolicyDto) {
+    const existing = await this.ensureReminderPolicyExists(id);
+    const targetNetworkId = dto.networkId ?? existing.networkId;
+    await this.ensureNetworkExists(targetNetworkId);
+    await this.assertActorCanManageNetwork(actor, targetNetworkId);
     return this.prisma.reminderPolicy.update({
       where: { id },
       data: {
@@ -137,7 +151,8 @@ export class NotificationsService {
     });
   }
 
-  async enqueueSms(dto: SendSmsDto) {
+  async enqueueSms(actor: JwtAccessPayload, dto: SendSmsDto) {
+    await this.assertActorCanManageUser(actor, dto.userId);
     const user = await this.prisma.user.findUnique({
       where: { id: dto.userId },
       select: { id: true, phone: true },
@@ -318,7 +333,8 @@ export class NotificationsService {
     return { removed: appointmentJobs.length };
   }
 
-  async getPreference(userId: string) {
+  async getPreference(actor: JwtAccessPayload, userId: string) {
+    await this.assertActorCanManageUser(actor, userId);
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { id: true },
@@ -331,7 +347,8 @@ export class NotificationsService {
     });
   }
 
-  async upsertPreference(dto: UpsertNotificationPreferenceDto) {
+  async upsertPreference(actor: JwtAccessPayload, dto: UpsertNotificationPreferenceDto) {
+    await this.assertActorCanManageUser(actor, dto.userId);
     const user = await this.prisma.user.findUnique({
       where: { id: dto.userId },
       select: { id: true },
@@ -365,7 +382,8 @@ export class NotificationsService {
     });
   }
 
-  async upsertPushDevice(dto: UpsertPushDeviceDto) {
+  async upsertPushDevice(actor: JwtAccessPayload, dto: UpsertPushDeviceDto) {
+    await this.assertActorCanManageUser(actor, dto.userId);
     const user = await this.prisma.user.findUnique({
       where: { id: dto.userId },
       select: { id: true },
@@ -397,6 +415,70 @@ export class NotificationsService {
         isActive: dto.isActive ?? true,
       },
     });
+  }
+
+  private async resolveScopedNetworkId(
+    actor: JwtAccessPayload,
+    requested?: string,
+  ): Promise<string | undefined> {
+    if (actor.role === UserRole.SuperAdmin) {
+      return requested;
+    }
+    const actorRow = await this.prisma.user.findUnique({
+      where: { id: actor.sub },
+      select: { studio: { select: { networkId: true } } },
+    });
+    const actorNetworkId = actorRow?.studio?.networkId;
+    if (!actorNetworkId) {
+      throw new ForbiddenException('Пользователь не привязан к сети');
+    }
+    const networkId = requested ?? actorNetworkId;
+    await this.assertActorCanManageNetwork(actor, networkId);
+    return networkId;
+  }
+
+  private async assertActorCanManageNetwork(actor: JwtAccessPayload, networkId: string): Promise<void> {
+    if (actor.role === UserRole.SuperAdmin) return;
+    if (actor.role !== UserRole.NetworkOwner && actor.role !== UserRole.StudioAdmin) {
+      throw new ForbiddenException('Недостаточно прав');
+    }
+    const actorRow = await this.prisma.user.findUnique({
+      where: { id: actor.sub },
+      select: { studio: { select: { networkId: true } } },
+    });
+    const actorNetworkId = actorRow?.studio?.networkId;
+    if (!actorNetworkId) {
+      throw new ForbiddenException('Пользователь не привязан к сети');
+    }
+    if (actorNetworkId !== networkId) {
+      throw new ForbiddenException('Нет доступа к этой сети');
+    }
+  }
+
+  private async assertActorCanManageUser(actor: JwtAccessPayload, targetUserId: string): Promise<void> {
+    if (actor.sub === targetUserId) return;
+    if (actor.role === UserRole.SuperAdmin) return;
+    if (actor.role !== UserRole.NetworkOwner && actor.role !== UserRole.StudioAdmin) {
+      throw new ForbiddenException('Недостаточно прав для управления пользователем');
+    }
+    const [actorRow, targetRow] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: actor.sub },
+        select: { studio: { select: { networkId: true } } },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: targetUserId },
+        select: { studio: { select: { networkId: true } } },
+      }),
+    ]);
+    const actorNetworkId = actorRow?.studio?.networkId;
+    const targetNetworkId = targetRow?.studio?.networkId;
+    if (!actorNetworkId || !targetNetworkId) {
+      throw new ForbiddenException('Пользователь не привязан к сети');
+    }
+    if (actorNetworkId !== targetNetworkId) {
+      throw new ForbiddenException('Нет доступа к пользователю другой сети');
+    }
   }
 
   private resolveSmsProvider(): SharedSmsProvider {
@@ -502,23 +584,25 @@ export class NotificationsService {
     }
   }
 
-  private async ensureTemplateExists(id: string): Promise<void> {
+  private async ensureTemplateExists(id: string): Promise<{ id: string; networkId: string }> {
     const exists = await this.prisma.notificationTemplate.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, networkId: true },
     });
     if (!exists) {
       throw new NotFoundException('Шаблон уведомления не найден');
     }
+    return exists;
   }
 
-  private async ensureReminderPolicyExists(id: string): Promise<void> {
+  private async ensureReminderPolicyExists(id: string): Promise<{ id: string; networkId: string }> {
     const exists = await this.prisma.reminderPolicy.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, networkId: true },
     });
     if (!exists) {
       throw new NotFoundException('ReminderPolicy не найден');
     }
+    return exists;
   }
 }

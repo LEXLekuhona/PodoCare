@@ -1,10 +1,11 @@
-import type { INestApplication } from '@nestjs/common';
 import { UserRole } from '@srs/shared-types';
 import argon2 from 'argon2';
 import request from 'supertest';
 
-import { PrismaService } from '../../src/infrastructure/prisma/prisma.service';
 import { buildTestApp } from '../helpers/build-test-app';
+
+import type { PrismaService } from '../../src/infrastructure/prisma/prisma.service';
+import type { INestApplication } from '@nestjs/common';
 
 describe('Auth (e2e)', () => {
   let app: INestApplication;

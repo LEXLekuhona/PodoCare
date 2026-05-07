@@ -1,5 +1,5 @@
-import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
+import { Module } from '@nestjs/common';
 
 import { NotificationsModule } from '../notifications/notifications.module';
 import { APPOINTMENTS_QUEUE } from './application/appointments.jobs';

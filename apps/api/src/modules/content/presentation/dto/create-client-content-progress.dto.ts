@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
+/** Тело POST /client/content/items/:id/progress (контракт content.progress). */
 export class CreateClientContentProgressDto {
   @ApiProperty({ minimum: 0, maximum: 100 })
   @Type(() => Number)

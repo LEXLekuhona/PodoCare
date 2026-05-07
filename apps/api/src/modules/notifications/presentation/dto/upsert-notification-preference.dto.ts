@@ -1,4 +1,4 @@
-import { IsBoolean, IsOptional, IsString, IsUUID, Length } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, IsUUID, Length, ValidateIf } from 'class-validator';
 
 export class UpsertNotificationPreferenceDto {
   @IsUUID()
@@ -29,12 +29,14 @@ export class UpsertNotificationPreferenceDto {
   reminderPushEnabled?: boolean;
 
   @IsOptional()
+  @ValidateIf((_, v) => v !== null)
   @IsString()
   @Length(5, 5)
-  quietHoursStart?: string;
+  quietHoursStart?: string | null;
 
   @IsOptional()
+  @ValidateIf((_, v) => v !== null)
   @IsString()
   @Length(5, 5)
-  quietHoursEnd?: string;
+  quietHoursEnd?: string | null;
 }

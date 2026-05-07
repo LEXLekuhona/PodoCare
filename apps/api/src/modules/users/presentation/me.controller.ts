@@ -1,12 +1,17 @@
+/* eslint-disable import/order */
 import { Body, Controller, ForbiddenException, Get, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { CurrentUser } from '../../auth/infrastructure/current-user.decorator';
 import { JwtAuthGuard } from '../../auth/infrastructure/jwt-auth.guard';
-import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
+
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { MeService } from '../application/me.service';
+// Nest ValidationPipe relies on runtime metadata for DTO classes.
+// `import type` breaks `design:paramtypes`, causing whitelist validation to reject all properties.
 import { RecordConsentsDto } from './dto/record-consents.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
+import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 
 @ApiTags('me')
 @ApiBearerAuth()

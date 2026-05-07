@@ -1,10 +1,10 @@
-import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
+import { Module } from '@nestjs/common';
 import { TerminusModule } from '@nestjs/terminus';
 
+import { HealthController } from './health.controller';
 import { APPOINTMENTS_QUEUE } from '../appointments/application/appointments.jobs';
 import { NOTIFICATIONS_QUEUE } from '../notifications/application/notifications.jobs';
-import { HealthController } from './health.controller';
 
 @Module({
   imports: [

@@ -134,19 +134,42 @@ export async function apiRequest<T>(
     throw new ApiError(401, 'Нет сессии');
   }
 
-  let res = await fetchWithAuth(url, init, token);
+  let res: Response;
+  try {
+    res = await fetchWithAuth(url, init, token);
+  } catch {
+    throw new ApiError(0, 'Нет связи с сервером');
+  }
   if (res.status === 401 && retry) {
     const next = await refreshTokensPair();
     if (!next) {
+      window.dispatchEvent(new Event('srs_admin_auth_changed'));
       throw new ApiError(401, 'Сессия истекла');
     }
     token = next.accessToken;
-    res = await fetchWithAuth(url, init, token);
+    try {
+      res = await fetchWithAuth(url, init, token);
+    } catch {
+      throw new ApiError(0, 'Нет связи с сервером');
+    }
   }
 
-  const body: unknown = await res.json().catch(() => null);
+  if (res.status === 204) return undefined as T;
+
+  const ct = res.headers.get('content-type')?.toLowerCase() ?? '';
+  const rawText = await res.text().catch(() => '');
+  const isJson = ct.includes('application/json') || ct.includes('+json');
+  const body: unknown = isJson && rawText.trim() ? (() => {
+    try {
+      return JSON.parse(rawText);
+    } catch {
+      return null;
+    }
+  })() : null;
   if (!res.ok) {
-    throw new ApiError(res.status, nestMessage(body), body);
+    const msg = rawText.trim() ? rawText.trim() : nestMessage(body);
+    throw new ApiError(res.status, msg, body ?? rawText);
   }
-  return body as T;
+  if (!rawText.trim()) return null as T;
+  return (body ?? rawText) as T;
 }

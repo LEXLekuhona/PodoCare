@@ -10,10 +10,21 @@ type StudioRow = {
   city: string;
 };
 
+type ServiceRow = {
+  id: string;
+  name: string;
+  isActive: boolean;
+};
+
 type AppointmentRow = {
   id: string;
   studioId: string;
   clientUserId: string | null;
+  client?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+  } | null;
   specialistId: string;
   startsAt: string;
   status: string;
@@ -46,7 +57,7 @@ type TreatmentPlanRow = {
 };
 
 type ProtocolForm = {
-  procedures: string;
+  procedureServiceIds: string[];
   diagnosis: string;
   materialsUsed: string;
   internalNote: string;
@@ -65,9 +76,33 @@ type PlanForm = {
   comment: string;
 };
 
+function appointmentStatusRu(status: string): string {
+  const map: Record<string, string> = {
+    PENDING: 'Ожидает подтверждения',
+    CONFIRMED: 'Подтверждён',
+    IN_PROGRESS: 'Идёт приём',
+    COMPLETED: 'Завершён',
+    NO_SHOW: 'Не явился',
+    CANCELLED_BY_CLIENT: 'Отменён клиентом',
+    CANCELLED_BY_STUDIO: 'Отменён студией',
+    CANCELLED: 'Отменён',
+  };
+  return map[status] ?? status;
+}
+
+function planStatusRu(status: PlanForm['status']): string {
+  const map: Record<PlanForm['status'], string> = {
+    DRAFT: 'Черновик',
+    ACTIVE: 'Активный',
+    COMPLETED: 'Завершён',
+    CANCELLED: 'Отменён',
+  };
+  return map[status];
+}
+
 function emptyProtocolForm(): ProtocolForm {
   return {
-    procedures: '',
+    procedureServiceIds: [],
     diagnosis: '',
     materialsUsed: '',
     internalNote: '',
@@ -138,6 +173,8 @@ export function TreatmentFlowPage() {
   const allowed = canUseClinicalFlow(user?.role);
   const [studios, setStudios] = useState<StudioRow[]>([]);
   const [studioId, setStudioId] = useState('');
+  const [services, setServices] = useState<ServiceRow[]>([]);
+  const [serviceFilter, setServiceFilter] = useState('');
   const [appointments, setAppointments] = useState<AppointmentRow[]>([]);
   const [selectedAppointmentId, setSelectedAppointmentId] = useState('');
   const [plans, setPlans] = useState<TreatmentPlanRow[]>([]);
@@ -155,6 +192,8 @@ export function TreatmentFlowPage() {
     [appointments, selectedAppointmentId],
   );
   const selectedPlan = useMemo(() => plans.find((item) => item.id === selectedPlanId) ?? null, [plans, selectedPlanId]);
+
+  const relevantStudioId = selectedAppointment?.studioId ?? (studioId.trim() ? studioId.trim() : null);
 
   const loadStudios = useCallback(async () => {
     try {
@@ -192,6 +231,22 @@ export function TreatmentFlowPage() {
     }
   }, [allowed, studioId, selectedAppointmentId]);
 
+  const loadServices = useCallback(async () => {
+    if (!allowed) return;
+    if (!relevantStudioId) {
+      setServices([]);
+      setProtocolForm((prev) => ({ ...prev, procedureServiceIds: [] }));
+      return;
+    }
+    try {
+      const rows = await apiRequest<ServiceRow[]>(`/admin/catalog/studios/${relevantStudioId}/services`);
+      setServices(rows);
+    } catch (e) {
+      setServices([]);
+      setError(e instanceof ApiError ? e.message : 'Не удалось загрузить список услуг');
+    }
+  }, [allowed, relevantStudioId]);
+
   const loadPlans = useCallback(async (clientUserId: string) => {
     try {
       const data = await apiRequest<TreatmentPlanRow[]>(`/clients/${clientUserId}/treatment-plans`);
@@ -219,6 +274,14 @@ export function TreatmentFlowPage() {
   }, [allowed, loadAppointments]);
 
   useEffect(() => {
+    if (!allowed) return;
+    void loadServices();
+    // When switching studio/appointment, clear selection to avoid carrying procedures across studios.
+    setProtocolForm((prev) => ({ ...prev, procedureServiceIds: [] }));
+    setServiceFilter('');
+  }, [allowed, loadServices, relevantStudioId]);
+
+  useEffect(() => {
     if (!selectedAppointment?.clientUserId) {
       setPlans([]);
       setSelectedPlanId('');
@@ -234,11 +297,13 @@ export function TreatmentFlowPage() {
     setError(null);
     setNotice(null);
     try {
+      const selectedNames = new Set(protocolForm.procedureServiceIds);
+      const proceduresDone = services
+        .filter((s) => selectedNames.has(s.id))
+        .map((s) => s.name.trim())
+        .filter((s) => s.length > 0);
       const payload = {
-        proceduresDone: protocolForm.procedures
-          .split(/[\n,]/)
-          .map((item) => item.trim())
-          .filter((item) => item.length > 0),
+        proceduresDone: proceduresDone.length > 0 ? proceduresDone : undefined,
         diagnosis: protocolForm.diagnosis.trim() || undefined,
         materialsUsed: protocolForm.materialsUsed.trim() || undefined,
         internalNote: protocolForm.internalNote.trim() || undefined,
@@ -376,7 +441,13 @@ export function TreatmentFlowPage() {
           >
             {appointments.map((item) => (
               <option key={item.id} value={item.id}>
-                {new Date(item.startsAt).toLocaleString('ru-RU')} • {item.status} • client {item.clientUserId}
+                {new Date(item.startsAt).toLocaleString('ru-RU')} •{' '}
+                {(item.client?.firstName || item.client?.lastName)
+                  ? `${item.client?.lastName ?? ''} ${item.client?.firstName ?? ''}`.trim()
+                  : item.clientUserId
+                    ? `client ${item.clientUserId}`
+                    : 'клиент не указан'}{' '}
+                • {appointmentStatusRu(item.status)}
               </option>
             ))}
           </select>
@@ -394,13 +465,38 @@ export function TreatmentFlowPage() {
             <h2 style={{ marginTop: 0 }}>Протокол визита</h2>
             <div className="grid two-col">
               <div className="field">
-                <label htmlFor="tf-procedures">Выполненные процедуры (через запятую или новую строку)</label>
-                <textarea
+                <label htmlFor="tf-procedures">Выполненные процедуры (выбор из услуг)</label>
+                <input
                   id="tf-procedures"
-                  rows={3}
-                  value={protocolForm.procedures}
-                  onChange={(ev) => setProtocolForm((prev) => ({ ...prev, procedures: ev.target.value }))}
+                  placeholder="Фильтр услуг…"
+                  value={serviceFilter}
+                  onChange={(ev) => setServiceFilter(ev.target.value)}
                 />
+                <div style={{ marginTop: '0.5rem' }}>
+                  <select
+                    multiple
+                    size={8}
+                    value={protocolForm.procedureServiceIds}
+                    onChange={(ev) => {
+                      const next = Array.from(ev.currentTarget.selectedOptions).map((o) => o.value);
+                      setProtocolForm((prev) => ({ ...prev, procedureServiceIds: next }));
+                    }}
+                    disabled={services.length === 0}
+                    style={{ width: '100%' }}
+                  >
+                    {services
+                      .filter((s) => s.isActive)
+                      .filter((s) => s.name.toLowerCase().includes(serviceFilter.trim().toLowerCase()))
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                  </select>
+                  <div style={{ marginTop: '0.35rem', color: 'var(--muted)', fontSize: 13 }}>
+                    Выберите несколько услуг (Cmd/Ctrl + клик).
+                  </div>
+                </div>
               </div>
               <div className="field">
                 <label htmlFor="tf-diagnosis">Диагноз</label>
@@ -502,10 +598,10 @@ export function TreatmentFlowPage() {
                   value={planForm.status}
                   onChange={(ev) => setPlanForm((prev) => ({ ...prev, status: ev.target.value as PlanForm['status'] }))}
                 >
-                  <option value="DRAFT">DRAFT</option>
-                  <option value="ACTIVE">ACTIVE</option>
-                  <option value="COMPLETED">COMPLETED</option>
-                  <option value="CANCELLED">CANCELLED</option>
+                  <option value="DRAFT">{planStatusRu('DRAFT')}</option>
+                  <option value="ACTIVE">{planStatusRu('ACTIVE')}</option>
+                  <option value="COMPLETED">{planStatusRu('COMPLETED')}</option>
+                  <option value="CANCELLED">{planStatusRu('CANCELLED')}</option>
                 </select>
               </div>
               <div className="field">

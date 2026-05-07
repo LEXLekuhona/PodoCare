@@ -57,6 +57,9 @@ export default function AppLayout() {
       <Stack.Screen name="health-concern/[slug]" options={{ headerShown: false }} />
       <Stack.Screen name="studio-direction/[slug]" options={{ headerShown: false }} />
       <Stack.Screen name="feedback" options={{ headerShown: false }} />
+      <Stack.Screen name="notification-settings" options={{ headerShown: false }} />
+      <Stack.Screen name="support-chat" options={{ headerShown: false }} />
+      <Stack.Screen name="studio-review" options={{ headerShown: false }} />
       <Stack.Screen name="faq" options={{ headerShown: false }} />
       <Stack.Screen name="consents" options={{ headerShown: false }} />
       <Stack.Screen name="consent-document" options={{ headerShown: false }} />

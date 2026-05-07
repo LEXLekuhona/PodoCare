@@ -27,7 +27,6 @@ import { AdminStaffService } from '../application/admin-staff.service';
 import { AdminStudioServicesService } from '../application/admin-studio-services.service';
 import { CreateFaqItemDto } from './dto/create-faq-item.dto';
 import { CreateHealthConcernDto } from './dto/create-health-concern.dto';
-import { CreateStudioDirectionDto } from './dto/create-studio-direction.dto';
 import { CreateNetworkDto } from './dto/create-network.dto';
 import { CreatePhysicalGoodCategoryDto } from './dto/create-physical-good-category.dto';
 import { CreatePhysicalGoodDto } from './dto/create-physical-good.dto';
@@ -36,6 +35,7 @@ import { CreateSpecialistShiftDto } from './dto/create-specialist-shift.dto';
 import { CreateSpecialistShiftsBulkDto } from './dto/create-specialist-shifts-bulk.dto';
 import { CreateSpecialistDto } from './dto/create-specialist.dto';
 import { CreateStaffUserDto } from './dto/create-staff-user.dto';
+import { CreateStudioDirectionDto } from './dto/create-studio-direction.dto';
 import { CreateStudioServiceDto } from './dto/create-studio-service.dto';
 import { CreateStudioDto } from './dto/create-studio.dto';
 import { ListSpecialistShiftsQueryDto } from './dto/list-specialist-shifts.query.dto';
@@ -44,13 +44,14 @@ import { ListStaffQueryDto } from './dto/list-staff.query.dto';
 import { ListStudiosQueryDto } from './dto/list-studios.query.dto';
 import { UpdateFaqItemDto } from './dto/update-faq-item.dto';
 import { UpdateHealthConcernDto } from './dto/update-health-concern.dto';
-import { UpdateStudioDirectionDto } from './dto/update-studio-direction.dto';
 import { UpdateNetworkDto } from './dto/update-network.dto';
 import { UpdatePhysicalGoodCategoryDto } from './dto/update-physical-good-category.dto';
 import { UpdatePhysicalGoodDto } from './dto/update-physical-good.dto';
 import { UpdateServiceCategoryDto } from './dto/update-service-category.dto';
+import { UpdateSpecialistShiftDto } from './dto/update-specialist-shift.dto';
 import { UpdateSpecialistDto } from './dto/update-specialist.dto';
 import { UpdateStaffUserDto } from './dto/update-staff-user.dto';
+import { UpdateStudioDirectionDto } from './dto/update-studio-direction.dto';
 import { UpdateStudioServiceDto } from './dto/update-studio-service.dto';
 import { UpdateStudioDto } from './dto/update-studio.dto';
 
@@ -492,6 +493,17 @@ export class AdminCatalogController {
     @Body() dto: CreateSpecialistShiftDto,
   ) {
     return this.adminSpecialistShiftsService.create(user, id, dto);
+  }
+
+  @Patch('specialists/:id/shifts/:shiftId')
+  @ApiOperation({ summary: 'Редактировать смену специалиста' })
+  updateSpecialistShift(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('shiftId', ParseUUIDPipe) shiftId: string,
+    @Body() dto: UpdateSpecialistShiftDto,
+  ) {
+    return this.adminSpecialistShiftsService.update(user, id, shiftId, dto);
   }
 
   @Post('specialists/:id/shifts/bulk')

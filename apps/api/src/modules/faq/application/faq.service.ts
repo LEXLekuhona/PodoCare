@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 
 @Injectable()

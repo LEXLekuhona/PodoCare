@@ -1,23 +1,25 @@
+/* eslint-disable import/order */
 import {
   BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ContentCtaTarget, Prisma, QuizQuestionType, QuizResultLevel } from '@prisma/client';
+import { ContentCtaTarget, QuizQuestionType, QuizResultLevel } from '@prisma/client';
 import { UserRole } from '@srs/shared-types';
 
-import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import { scoreQuizSession } from './quiz-scoring';
 
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
+import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import type {
   QuizAdminOutcomeInput,
   QuizAdminQuestionInput,
-} from '../presentation/dto/create-quiz-admin.dto';
-import type { CreateQuizAdminDto } from '../presentation/dto/create-quiz-admin.dto';
+ CreateQuizAdminDto } from '../presentation/dto/create-quiz-admin.dto';
 import type { CreateQuizSessionDto } from '../presentation/dto/create-quiz-session.dto';
 import type { SubmitQuizAnswerDto } from '../presentation/dto/submit-quiz-answer.dto';
 import type { UpdateQuizAdminDto } from '../presentation/dto/update-quiz-admin.dto';
+import type { Prisma} from '@prisma/client';
 
 type JwtLikeUser = { sub: string; role: UserRole };
 type SessionAnswer = { questionId: string; optionIds: string[] };

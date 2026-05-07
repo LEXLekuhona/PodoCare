@@ -29,12 +29,14 @@ export function saveAuth(auth: StoredAuth): void {
   localStorage.setItem(KEYS.access, auth.accessToken);
   localStorage.setItem(KEYS.refresh, auth.refreshToken);
   localStorage.setItem(KEYS.user, JSON.stringify(auth.user));
+  window.dispatchEvent(new Event('srs_admin_auth_changed'));
 }
 
 export function clearAuth(): void {
   localStorage.removeItem(KEYS.access);
   localStorage.removeItem(KEYS.refresh);
   localStorage.removeItem(KEYS.user);
+  window.dispatchEvent(new Event('srs_admin_auth_changed'));
 }
 
 export function getAccessToken(): string | null {

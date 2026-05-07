@@ -1,7 +1,10 @@
+/* eslint-disable import/order */
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../../auth/infrastructure/jwt-auth.guard';
+
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { StudiosService } from '../application/studios.service';
 
 @ApiTags('studios')

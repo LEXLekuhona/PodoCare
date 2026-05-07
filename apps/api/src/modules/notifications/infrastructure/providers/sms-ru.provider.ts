@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { ConfigService } from '@nestjs/config';
 
-import type { NotificationsConfig } from '../../../../config/notifications.config';
 import { type SendSmsInput, type SendSmsResult, type SmsProvider } from './sms-provider.port';
+
+import type { NotificationsConfig } from '../../../../config/notifications.config';
 
 interface SmsRuResponse {
   status: 'OK' | 'ERROR';

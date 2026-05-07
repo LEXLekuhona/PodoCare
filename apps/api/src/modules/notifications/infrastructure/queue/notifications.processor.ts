@@ -1,7 +1,6 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+/* eslint-disable import/order */
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Prisma } from '@prisma/client';
-import { Job } from 'bullmq';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   NotificationChannel,
   NotificationStatus,
@@ -9,7 +8,7 @@ import {
   SmsProvider as SharedSmsProvider,
 } from '@srs/shared-types';
 
-import { PrismaService } from '../../../../infrastructure/prisma/prisma.service';
+
 import {
   NOTIFICATIONS_QUEUE,
   NOTIFICATIONS_SMS_JOB,
@@ -17,6 +16,11 @@ import {
   type SendSmsJobResult,
 } from '../../application/notifications.jobs';
 import { SMS_PROVIDER_TOKEN, type SmsProvider } from '../providers/sms-provider.port';
+
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
+import { PrismaService } from '../../../../infrastructure/prisma/prisma.service';
+import type { Prisma } from '@prisma/client';
+import type { Job } from 'bullmq';
 
 @Injectable()
 @Processor(NOTIFICATIONS_QUEUE)

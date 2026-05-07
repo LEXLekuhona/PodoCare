@@ -27,9 +27,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<StoredUser | null>(null);
 
   useEffect(() => {
-    const auth = loadStoredAuth();
-    setUser(auth?.user ?? null);
-    setReady(true);
+    const sync = () => {
+      const auth = loadStoredAuth();
+      setUser(auth?.user ?? null);
+      setReady(true);
+    };
+    sync();
+    window.addEventListener('storage', sync);
+    window.addEventListener('srs_admin_auth_changed', sync as EventListener);
+    return () => {
+      window.removeEventListener('storage', sync);
+      window.removeEventListener('srs_admin_auth_changed', sync as EventListener);
+    };
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {

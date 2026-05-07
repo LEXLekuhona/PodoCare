@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { ConfigService } from '@nestjs/config';
 
 export interface EncryptedPayload {

@@ -79,7 +79,12 @@ export class CreateContentSeriesDto {
   @IsInt()
   sortOrder?: number;
 
-  @ApiPropertyOptional({ enum: ['draft', 'published'], default: 'draft' })
+  @ApiPropertyOptional({
+    enum: ['draft', 'published'],
+    default: 'draft',
+    description:
+      'Публикация серии (контракт content.publicationState). Черновик скрыт из клиентской ленты, пока isPublished=false.',
+  })
   @IsOptional()
   @IsIn(['draft', 'published'])
   status?: 'draft' | 'published';

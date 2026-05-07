@@ -1,4 +1,4 @@
-export type ContentPaywallMode = 'FREE' | 'PAID' | 'PLAN';
+import type { ContentPaywallMode } from '@srs/shared-types';
 
 export function resolvePaywallMode(priceMinor: number): ContentPaywallMode {
   return priceMinor > 0 ? 'PAID' : 'FREE';

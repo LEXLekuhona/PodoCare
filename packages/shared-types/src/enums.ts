@@ -257,6 +257,13 @@ export enum TreatmentPlanStatus {
   Cancelled = 'CANCELLED',
 }
 
+export enum TreatmentPlanStepStatus {
+  Pending = 'PENDING',
+  InProgress = 'IN_PROGRESS',
+  Done = 'DONE',
+  Skipped = 'SKIPPED',
+}
+
 // =============================================================================
 // PROGRAM INQUIRY (заявка на программу 250к → менеджер → договор)
 // =============================================================================

@@ -1,15 +1,18 @@
-import { Injectable } from '@nestjs/common';
+/* eslint-disable import/order */
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
+import { Injectable } from '@nestjs/common';
 import { AppointmentStatus } from '@srs/shared-types';
 
-import { PrismaService } from '../../../../infrastructure/prisma/prisma.service';
 import {
   APPOINTMENTS_QUEUE,
   APPOINTMENT_AUTO_NO_SHOW_JOB,
   APPOINTMENT_AUTO_START_JOB,
   type AppointmentLifecycleJobData,
 } from '../../application/appointments.jobs';
+
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
+import { PrismaService } from '../../../../infrastructure/prisma/prisma.service';
+import type { Job } from 'bullmq';
 
 @Injectable()
 @Processor(APPOINTMENTS_QUEUE)

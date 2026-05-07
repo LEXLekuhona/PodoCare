@@ -4,9 +4,10 @@ import {
   Injectable,
   type NestInterceptor,
 } from '@nestjs/common';
+import { ulid } from 'ulid';
+
 import type { Request, Response } from 'express';
 import type { Observable } from 'rxjs';
-import { ulid } from 'ulid';
 
 /**
  * Проставляет заголовок X-Request-Id входящему запросу и ответу.

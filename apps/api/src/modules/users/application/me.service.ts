@@ -1,14 +1,18 @@
+/* eslint-disable import/order */
 import {
   BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ConsentType, Prisma } from '@prisma/client';
-import { AppointmentStatus } from '@srs/shared-types';
+import { Prisma } from '@prisma/client';
+import { AppointmentStatus, ConsentType } from '@srs/shared-types';
 
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { CryptoService } from '../../../infrastructure/crypto/crypto.service';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { TreatmentPlansService } from './treatment-plans.service';
 
 @Injectable()
@@ -21,15 +25,15 @@ export class MeService {
 
   private consentTitleRu(type: ConsentType): string {
     switch (type) {
-      case ConsentType.PERSONAL_DATA:
+      case ConsentType.PersonalData:
         return 'Согласие на обработку персональных данных';
-      case ConsentType.MEDICAL_INFORMATION:
+      case ConsentType.MedicalInformation:
         return 'Информированное согласие на медицинское вмешательство';
-      case ConsentType.PROCEDURE_CONSENT:
+      case ConsentType.ProcedureConsent:
         return 'Согласие на медицинское вмешательство';
-      case ConsentType.MARKETING_COMMUNICATIONS:
+      case ConsentType.MarketingCommunications:
         return 'Согласие на маркетинговые коммуникации';
-      case ConsentType.TERMS_OF_SERVICE:
+      case ConsentType.TermsOfService:
         return 'Условия использования сервиса';
       default:
         return 'Документ';
@@ -44,16 +48,17 @@ export class MeService {
     });
     const latestByType = new Map<ConsentType, (typeof rows)[0]>();
     for (const row of rows) {
-      if (!latestByType.has(row.type)) {
-        latestByType.set(row.type, row);
+      const t = row.type as unknown as ConsentType;
+      if (!latestByType.has(t)) {
+        latestByType.set(t, row);
       }
     }
     return [...latestByType.values()].map((row) => ({
       id: row.id,
-      type: row.type,
+      type: row.type as unknown as ConsentType,
       documentVersion: row.documentVersion,
       signedAt: row.signedAt.toISOString(),
-      title: this.consentTitleRu(row.type),
+      title: this.consentTitleRu(row.type as unknown as ConsentType),
       status: 'ACTIVE' as const,
     }));
   }

@@ -17,6 +17,7 @@ import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 import type { CreateSpecialistShiftDto } from '../presentation/dto/create-specialist-shift.dto';
 import type { CreateSpecialistShiftsBulkDto } from '../presentation/dto/create-specialist-shifts-bulk.dto';
 import type { ListSpecialistShiftsQueryDto } from '../presentation/dto/list-specialist-shifts.query.dto';
+import type { UpdateSpecialistShiftDto } from '../presentation/dto/update-specialist-shift.dto';
 
 @Injectable()
 export class AdminSpecialistShiftsService {
@@ -24,6 +25,22 @@ export class AdminSpecialistShiftsService {
     private readonly prisma: PrismaService,
     private readonly adminSpecialistsService: AdminSpecialistsService,
   ) {}
+
+  private parseDatetimeLocal(value: string): { ymd: string; hh: string; mm: string } {
+    const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/.exec(value.trim());
+    if (!match) {
+      throw new BadRequestException('Некорректная дата/время (ожидается формат YYYY-MM-DDTHH:mm)');
+    }
+    const ymd = match[1]!;
+    const hh = match[2]!;
+    const mm = match[3]!;
+    const h = Number(hh);
+    const m = Number(mm);
+    if (!Number.isInteger(h) || !Number.isInteger(m) || h < 0 || h > 23 || m < 0 || m > 59) {
+      throw new BadRequestException('Некорректная дата/время');
+    }
+    return { ymd, hh, mm };
+  }
 
   private timeToMinutes(value: string): number {
     const match = /^(\d{2}):(\d{2})$/.exec(value.trim());
@@ -121,8 +138,18 @@ export class AdminSpecialistShiftsService {
       }
     }
 
-    const startsAt = new Date(dto.startsAt);
-    const endsAt = new Date(dto.endsAt);
+    const studio = await this.prisma.studio.findUnique({
+      where: { id: dto.studioId },
+      select: { id: true, timezone: true },
+    });
+    if (!studio) {
+      throw new NotFoundException('Студия не найдена');
+    }
+
+    const s = this.parseDatetimeLocal(dto.startsAtLocal);
+    const e = this.parseDatetimeLocal(dto.endsAtLocal);
+    const startsAt = fromZonedTime(`${s.ymd}T${s.hh}:${s.mm}:00`, studio.timezone);
+    const endsAt = fromZonedTime(`${e.ymd}T${e.hh}:${e.mm}:00`, studio.timezone);
     if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) {
       throw new BadRequestException('Некорректные даты смены');
     }
@@ -248,6 +275,95 @@ export class AdminSpecialistShiftsService {
     return { createdCount, skippedCount };
   }
 
+  async update(
+    actor: JwtAccessPayload,
+    specialistUserId: string,
+    shiftId: string,
+    dto: UpdateSpecialistShiftDto,
+  ) {
+    const { profileId, studioIds } = await this.resolveSpecialistProfileId(actor, specialistUserId);
+
+    const shift = await this.prisma.specialistShift.findUnique({
+      where: { id: shiftId },
+      select: { id: true, specialistId: true, studioId: true, startsAt: true, endsAt: true, status: true },
+    });
+    if (!shift || shift.specialistId !== profileId) {
+      throw new NotFoundException('Смена не найдена');
+    }
+
+    const nextStudioId = dto.studioId ?? shift.studioId;
+    if (!studioIds.includes(nextStudioId)) {
+      throw new BadRequestException('Нельзя назначить смену в студии, где специалист не ведёт приём');
+    }
+    if (actor.role === UserRole.StudioAdmin) {
+      const myStudio = await this.getStudioAdminStudioId(actor.sub);
+      if (nextStudioId !== myStudio) {
+        throw new ForbiddenException('Можно управлять сменами только в своей студии');
+      }
+    }
+
+    const studio = await this.prisma.studio.findUnique({
+      where: { id: nextStudioId },
+      select: { id: true, timezone: true },
+    });
+    if (!studio) {
+      throw new NotFoundException('Студия не найдена');
+    }
+
+    const nextStartsAt =
+      dto.startsAtLocal != null
+        ? (() => {
+            const s = this.parseDatetimeLocal(dto.startsAtLocal);
+            return fromZonedTime(`${s.ymd}T${s.hh}:${s.mm}:00`, studio.timezone);
+          })()
+        : shift.startsAt;
+    const nextEndsAt =
+      dto.endsAtLocal != null
+        ? (() => {
+            const e = this.parseDatetimeLocal(dto.endsAtLocal);
+            return fromZonedTime(`${e.ymd}T${e.hh}:${e.mm}:00`, studio.timezone);
+          })()
+        : shift.endsAt;
+
+    if (Number.isNaN(nextStartsAt.getTime()) || Number.isNaN(nextEndsAt.getTime())) {
+      throw new BadRequestException('Некорректные даты смены');
+    }
+    if (nextEndsAt <= nextStartsAt) {
+      throw new BadRequestException('Конец смены должен быть позже начала');
+    }
+
+    const overlaps = await this.prisma.specialistShift.findFirst({
+      where: {
+        id: { not: shift.id },
+        specialistId: profileId,
+        studioId: nextStudioId,
+        status: { in: [ShiftStatus.Scheduled, ShiftStatus.Active] },
+        startsAt: { lt: nextEndsAt },
+        endsAt: { gt: nextStartsAt },
+      },
+      select: { id: true },
+    });
+    if (overlaps) {
+      throw new ConflictException('Смена пересекается с уже существующей');
+    }
+
+    return this.prisma.specialistShift.update({
+      where: { id: shift.id },
+      data: {
+        studioId: nextStudioId,
+        startsAt: nextStartsAt,
+        endsAt: nextEndsAt,
+      },
+      select: {
+        id: true,
+        startsAt: true,
+        endsAt: true,
+        status: true,
+        studio: { select: { id: true, name: true, city: true } },
+      },
+    });
+  }
+
   async delete(actor: JwtAccessPayload, specialistUserId: string, shiftId: string) {
     const { profileId } = await this.resolveSpecialistProfileId(actor, specialistUserId);
     const shift = await this.prisma.specialistShift.findUnique({
@@ -264,7 +380,11 @@ export class AdminSpecialistShiftsService {
       }
     }
 
-    await this.prisma.specialistShift.delete({ where: { id: shiftId } });
+    await this.prisma.specialistShift.update({
+      where: { id: shiftId },
+      data: { status: ShiftStatus.Cancelled },
+      select: { id: true },
+    });
     return { ok: true };
   }
 }

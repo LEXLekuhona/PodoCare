@@ -6,6 +6,7 @@ export type BookingSlotItemDto = {
   startsAt: string;
   label: string;
   available: boolean;
+  unavailableReason?: string;
 };
 
 export type BookingSlotsDayDto = {
@@ -13,6 +14,7 @@ export type BookingSlotsDayDto = {
   weekdayShort: string;
   weekdayIndex: number;
   disabled: boolean;
+  disabledReason?: string;
   slots: BookingSlotItemDto[];
 };
 

@@ -1,14 +1,15 @@
+/* eslint-disable import/order */
 import {
   ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { UserRole } from '@srs/shared-types';
 import { Prisma } from '@prisma/client';
+import { UserRole } from '@srs/shared-types';
 
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
-
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 import type { CreateServiceCategoryDto } from '../presentation/dto/create-service-category.dto';
 import type { UpdateServiceCategoryDto } from '../presentation/dto/update-service-category.dto';

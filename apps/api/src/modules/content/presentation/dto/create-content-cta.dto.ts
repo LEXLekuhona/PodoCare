@@ -14,8 +14,9 @@ import {
   MinLength,
 } from 'class-validator';
 
+/** CTA у единицы контента (контракт content.cta): одна цель target + ровно одно target* поле. */
 export class CreateContentCtaDto {
-  @ApiProperty({ enum: ContentCtaTarget })
+  @ApiProperty({ enum: ContentCtaTarget, description: 'Тип перехода (запись / программа / товар / …).' })
   @IsEnum(ContentCtaTarget)
   target!: ContentCtaTarget;
 

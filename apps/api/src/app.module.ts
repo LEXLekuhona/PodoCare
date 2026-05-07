@@ -24,7 +24,9 @@ import { FaqModule } from './modules/faq/faq.module';
 import { HealthModule } from './modules/health/health.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { QuizModule } from './modules/quiz/quiz.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
 import { StudiosModule } from './modules/studios/studios.module';
+import { SupportModule } from './modules/support/support.module';
 import { UsersModule } from './modules/users/users.module';
 
 @Module({
@@ -103,6 +105,8 @@ import { UsersModule } from './modules/users/users.module';
     HealthModule,
     NotificationsModule,
     QuizModule,
+    ReviewsModule,
+    SupportModule,
   ],
 })
 export class AppModule {}

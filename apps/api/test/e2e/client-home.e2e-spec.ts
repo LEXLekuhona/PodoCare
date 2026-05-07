@@ -1,10 +1,11 @@
-import type { INestApplication } from '@nestjs/common';
 import { ContentAudience, ContentFormat, FaqCategory, UserRole } from '@srs/shared-types';
 import { addMinutes } from 'date-fns';
 import request from 'supertest';
 
-import { PrismaService } from '../../src/infrastructure/prisma/prisma.service';
 import { buildTestApp } from '../helpers/build-test-app';
+
+import type { PrismaService } from '../../src/infrastructure/prisma/prisma.service';
+import type { INestApplication } from '@nestjs/common';
 
 async function loginClient(app: INestApplication, phone?: string) {
   const actualPhone = phone ?? `+7999${Math.floor(1000000 + Math.random() * 8999999)}`;

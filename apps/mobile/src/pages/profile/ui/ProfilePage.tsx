@@ -34,10 +34,6 @@ function shortDisplayName(firstName: string, lastName: string): string {
   return lastInitial ? `${f} ${lastInitial.toUpperCase()}.` : f;
 }
 
-function comingSoon(title?: string) {
-  Alert.alert(title ?? 'Скоро', 'Раздел в разработке.');
-}
-
 export function ProfilePage() {
   const [profile, setProfile] = useState<MeProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
@@ -85,7 +81,11 @@ export function ProfilePage() {
       <SafeAreaPadding minTop={12} minBottom={0} style={styles.safeTop} lightColor="transparent" darkColor="transparent">
         <RNView style={styles.topBar}>
           <RNView style={styles.topBarSpacer} />
-          <Pressable hitSlop={14} accessibilityLabel="Уведомления" onPress={() => comingSoon('Уведомления')}>
+          <Pressable
+            hitSlop={14}
+            accessibilityLabel="Уведомления"
+            onPress={() => router.push('/(app)/notification-settings' as never)}
+          >
             <FontAwesome name="bell-o" size={22} color={ICON_MAIN} />
           </Pressable>
         </RNView>
@@ -157,7 +157,7 @@ export function ProfilePage() {
           <ProfileMenuRow
             icon={<FontAwesome name="bell-o" size={18} color={ICON_MAIN} />}
             label="Уведомления"
-            onPress={() => comingSoon('Уведомления')}
+            onPress={() => router.push('/(app)/notification-settings' as never)}
           />
         </View>
 
@@ -168,7 +168,7 @@ export function ProfilePage() {
           <ProfileMenuRow
             icon={<FontAwesome name="comments-o" size={18} color={ICON_MAIN} />}
             label="Чат поддержки"
-            onPress={() => comingSoon('Чат поддержки')}
+            onPress={() => router.push('/(app)/support-chat' as never)}
             showDivider
           />
           <ProfileMenuRow
@@ -180,7 +180,7 @@ export function ProfilePage() {
           <ProfileMenuRow
             icon={<FontAwesome name="pencil" size={17} color={ICON_MAIN} />}
             label="Оставить отзыв"
-            onPress={() => comingSoon('Оставить отзыв')}
+            onPress={() => router.push('/(app)/studio-review' as never)}
             showDivider
           />
           <ProfileMenuRow

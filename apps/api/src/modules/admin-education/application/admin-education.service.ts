@@ -6,8 +6,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { UserRole } from '@srs/shared-types';
 import { Prisma } from '@prisma/client';
+import { UserRole } from '@srs/shared-types';
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- токен Nest DI
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';

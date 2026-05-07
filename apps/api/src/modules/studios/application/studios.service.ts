@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 
 /** Как `validator.isUUID(str, 'loose')` — допускает любой 128-bit UUID в текстовой форме (как PostgreSQL). */

@@ -1,3 +1,9 @@
+import type {
+  ClientContentCtaClickResponse,
+  ClientContentFeedItem,
+  ClientContentFeedResponse,
+} from '@srs/shared-types';
+
 import { apiFetchJsonAuth } from '@/shared/api/authenticated-fetch';
 
 export type EducationAudience = 'client' | 'master';
@@ -39,37 +45,11 @@ export type EducationScreenDto = {
   featured: FeaturedDto[];
 };
 
-export type ContentFeedCtaDto = {
-  id: string;
-  target: string;
-  label: string;
-  subtitle: string | null;
-  targetExternalUrl?: string | null;
-};
+export type ContentFeedCtaDto = ClientContentFeedItem['ctas'][number];
 
-export type ContentFeedItemDto = {
-  id: string;
-  title: string;
-  description: string | null;
-  coverImageUrl: string | null;
-  format: string;
-  audience: string;
-  paywall: {
-    mode: 'FREE' | 'PAID' | 'PLAN';
-    isLocked: boolean;
-    priceMinor: number;
-    currency: string;
-  };
-  progress: {
-    percent: number;
-    completedAt: string | null;
-  };
-  ctas: ContentFeedCtaDto[];
-};
+export type ContentFeedItemDto = ClientContentFeedItem;
 
-export type ContentFeedDto = {
-  items: ContentFeedItemDto[];
-};
+export type ContentFeedDto = ClientContentFeedResponse;
 
 export async function fetchEducationScreen(audience: EducationAudience): Promise<EducationScreenDto> {
   const q = audience === 'master' ? '?audience=master' : '?audience=client';
@@ -91,8 +71,11 @@ export async function saveContentItemProgress(
   });
 }
 
-export async function clickContentItemCta(itemId: string, ctaId: string): Promise<void> {
-  await apiFetchJsonAuth(
+export async function clickContentItemCta(
+  itemId: string,
+  ctaId: string,
+): Promise<ClientContentCtaClickResponse> {
+  return apiFetchJsonAuth<ClientContentCtaClickResponse>(
     `/client/content/items/${encodeURIComponent(itemId)}/cta/${encodeURIComponent(ctaId)}/click`,
     {
       method: 'POST',

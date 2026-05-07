@@ -1,5 +1,7 @@
 import { execSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer } from '@testcontainers/redis';
@@ -11,7 +13,6 @@ import { RedisContainer } from '@testcontainers/redis';
  * globalThis.__TESTCONTAINERS__, откуда их забирает teardown.
  */
 export default async function globalSetup(): Promise<void> {
-  // eslint-disable-next-line no-console
   console.log('\n🐘  Запуск Postgres testcontainer…');
   const postgres = await new PostgreSqlContainer('postgres:16-alpine')
     .withDatabase('srs_test')
@@ -19,7 +20,6 @@ export default async function globalSetup(): Promise<void> {
     .withPassword('srs_test_pwd')
     .start();
 
-  // eslint-disable-next-line no-console
   console.log('🧠  Запуск Redis testcontainer…');
   const redis = await new RedisContainer('redis:7-alpine').start();
 
@@ -36,15 +36,25 @@ export default async function globalSetup(): Promise<void> {
   process.env.DATA_ENCRYPTION_KEY = randomBytes(32).toString('base64');
   process.env.OTP_PROVIDER = 'console';
 
-  // eslint-disable-next-line no-console
   console.log('🏗  Применение миграций Prisma…');
   execSync('pnpm prisma migrate deploy', {
     stdio: 'inherit',
     env: { ...process.env, DATABASE_URL: databaseUrl },
   });
 
-  (globalThis as unknown as { __TESTCONTAINERS__: unknown }).__TESTCONTAINERS__ = {
-    postgres,
-    redis,
-  };
+  // Jest запускает globalSetup/globalTeardown в разных процессах, поэтому globalThis не надёжен.
+  // Сохраняем метаданные контейнеров в файл, доступный teardown.
+  const infoPath = join(process.cwd(), '.testcontainers.json');
+  writeFileSync(
+    infoPath,
+    JSON.stringify(
+      {
+        postgresId: postgres.getId(),
+        redisId: redis.getId(),
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
 }

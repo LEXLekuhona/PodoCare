@@ -12,6 +12,10 @@ export const envSchema = z.object({
   API_HOST: z.string().default('0.0.0.0'),
   API_GLOBAL_PREFIX: z.string().default('api'),
   API_CORS_ORIGINS: z.string().default('*'),
+  API_ENABLE_SWAGGER: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true'),
 
   DATABASE_URL: z.string().url(),
   SHADOW_DATABASE_URL: z.string().url().optional(),

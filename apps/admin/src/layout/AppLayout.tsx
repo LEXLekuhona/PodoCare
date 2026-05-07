@@ -2,6 +2,7 @@ import { UserRole } from '@srs/shared-types';
 import { NavLink, Outlet } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthContext';
+import { canManageStaff, canMutateTenantCatalog } from '../lib/roles';
 
 function roleLabel(role: UserRole): string {
   switch (role) {
@@ -24,6 +25,9 @@ function roleLabel(role: UserRole): string {
 
 export function AppLayout() {
   const { user, logout } = useAuth();
+  const role = user?.role;
+  const canTenant = role ? canMutateTenantCatalog(role) : false;
+  const canStaff = role ? canManageStaff(role) : false;
 
   return (
     <div className="layout">
@@ -41,56 +45,70 @@ export function AppLayout() {
             Обзор
           </NavLink>
           <div className="nav-caption">Каталог</div>
-          <NavLink to="/catalog/networks" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Сети
-          </NavLink>
-          <NavLink to="/catalog/studios" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Студии
-          </NavLink>
-          <NavLink to="/catalog/services" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Услуги
-          </NavLink>
-          <NavLink to="/catalog/products" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Товары
-          </NavLink>
-          <NavLink
-            to="/catalog/specialists"
-            className={({ isActive }) => (isActive ? 'active' : '')}
-          >
-            Специалисты
-          </NavLink>
-          <NavLink to="/catalog/staff" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Сотрудники
-          </NavLink>
-          <NavLink
-            to="/catalog/health-concerns"
-            className={({ isActive }) => (isActive ? 'active' : '')}
-          >
-            Что вас беспокоит
-          </NavLink>
-          <NavLink
-            to="/catalog/studio-directions"
-            className={({ isActive }) => (isActive ? 'active' : '')}
-          >
-            Направления студии
-          </NavLink>
-          <NavLink to="/catalog/faq" className={({ isActive }) => (isActive ? 'active' : '')}>
-            FAQ
-          </NavLink>
+          {canTenant ? (
+            <>
+              <NavLink to="/catalog/networks" className={({ isActive }) => (isActive ? 'active' : '')}>
+                Сети
+              </NavLink>
+              <NavLink to="/catalog/studios" className={({ isActive }) => (isActive ? 'active' : '')}>
+                Студии
+              </NavLink>
+              <NavLink
+                to="/catalog/health-concerns"
+                className={({ isActive }) => (isActive ? 'active' : '')}
+              >
+                Что вас беспокоит
+              </NavLink>
+              <NavLink
+                to="/catalog/studio-directions"
+                className={({ isActive }) => (isActive ? 'active' : '')}
+              >
+                Направления студии
+              </NavLink>
+              <NavLink to="/catalog/faq" className={({ isActive }) => (isActive ? 'active' : '')}>
+                FAQ
+              </NavLink>
+            </>
+          ) : null}
+          {canStaff ? (
+            <>
+              <NavLink to="/catalog/services" className={({ isActive }) => (isActive ? 'active' : '')}>
+                Услуги
+              </NavLink>
+              <NavLink to="/catalog/products" className={({ isActive }) => (isActive ? 'active' : '')}>
+                Товары
+              </NavLink>
+              <NavLink
+                to="/catalog/specialists"
+                className={({ isActive }) => (isActive ? 'active' : '')}
+              >
+                Специалисты
+              </NavLink>
+              <NavLink to="/catalog/staff" className={({ isActive }) => (isActive ? 'active' : '')}>
+                Сотрудники
+              </NavLink>
+            </>
+          ) : null}
           <div className="nav-caption">Обучение</div>
-          <NavLink to="/education/content" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Контент и воронка
-          </NavLink>
-          <NavLink to="/education/quiz" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Диагностический квиз
-          </NavLink>
+          {canStaff ? (
+            <>
+              <NavLink to="/education/content" className={({ isActive }) => (isActive ? 'active' : '')}>
+                Контент и воронка
+              </NavLink>
+              <NavLink to="/education/quiz" className={({ isActive }) => (isActive ? 'active' : '')}>
+                Диагностический квиз
+              </NavLink>
+            </>
+          ) : null}
           <div className="nav-caption">Клиника</div>
-          <NavLink
-            to="/operations/treatment-flow"
-            className={({ isActive }) => (isActive ? 'active' : '')}
-          >
-            Протоколы и планы
-          </NavLink>
+          {canStaff ? (
+            <NavLink
+              to="/operations/treatment-flow"
+              className={({ isActive }) => (isActive ? 'active' : '')}
+            >
+              Протоколы и планы
+            </NavLink>
+          ) : null}
         </nav>
 
         <div className="sidebar-foot">

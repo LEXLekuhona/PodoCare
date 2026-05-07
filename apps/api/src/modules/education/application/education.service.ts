@@ -1,15 +1,21 @@
+/* eslint-disable import/order */
 import { Injectable } from '@nestjs/common';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { ConfigService } from '@nestjs/config';
-import { ContentAudience, ContentFormat, OrderStatus, Prisma } from '@prisma/client';
+import { ContentFormat, OrderStatus } from '@prisma/client';
 
-import type { EducationConfig } from '../../../config/education.config';
-import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import {
-  EducationAudienceParam,
-  EducationScreenPayload,
   getStaticEducationCatalog,
   prismaAudience,
 } from '../domain/education-static-catalog';
+
+import type { EducationConfig } from '../../../config/education.config';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
+import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
+import type {
+  EducationAudienceParam,
+  EducationScreenPayload} from '../domain/education-static-catalog';
+import type { ContentAudience, Prisma } from '@prisma/client';
 
 @Injectable()
 export class EducationService {

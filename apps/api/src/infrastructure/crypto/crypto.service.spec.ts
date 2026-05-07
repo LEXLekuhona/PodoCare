@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto';
 
+import { CryptoService } from './crypto.service';
+
 import type { ConfigService } from '@nestjs/config';
 
-import { CryptoService } from './crypto.service';
 
 describe('CryptoService', () => {
   const buildService = (): CryptoService => {

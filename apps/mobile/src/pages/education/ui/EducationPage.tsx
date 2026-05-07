@@ -31,6 +31,7 @@ import {
   fetchClientContentFeed,
   saveContentItemProgress,
 } from '@/features/education/education-api';
+import { resolveContentCtaNavigation } from '@/features/education/content-cta-routing';
 import { ApiError } from '@/shared/api/api-error';
 import { SafeAreaPadding } from '@/shared/ui/safe-area';
 
@@ -143,11 +144,16 @@ export function EducationPage() {
     setBusyItemId(item.id);
     try {
       await clickContentItemCta(item.id, cta.id);
-      if (cta.target === 'EXTERNAL_URL' && cta.targetExternalUrl) {
-        await Linking.openURL(cta.targetExternalUrl);
-      } else {
-        comingSoon(cta.label);
+      const nav = resolveContentCtaNavigation(cta);
+      if (nav.kind === 'external') {
+        await Linking.openURL(nav.url);
+        return;
       }
+      if (nav.kind === 'expo-router') {
+        router.push({ pathname: nav.pathname, params: nav.params } as never);
+        return;
+      }
+      comingSoon(cta.label);
     } catch (e: unknown) {
       const message = e instanceof ApiError ? e.message : 'Не удалось выполнить CTA';
       Alert.alert('Ошибка', message);
@@ -182,7 +188,7 @@ export function EducationPage() {
           </Pressable>
           <Pressable
             style={styles.bellBtn}
-            onPress={() => comingSoon('Уведомления')}
+            onPress={() => router.push('/(app)/notification-settings' as never)}
             accessibilityLabel="Уведомления"
           >
             <FontAwesome name="bell-o" size={20} color={PRIMARY_CONTAINER} />

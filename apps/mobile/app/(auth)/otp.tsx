@@ -14,11 +14,27 @@ import {
 
 import { Text, View } from '@/components/Themed';
 import { requestOtp, verifyOtp } from '@/features/auth/auth-api';
+import { fetchMyConsents } from '@/features/consents/consents-api';
 import { mergeQuizSessionWithUser } from '@/features/quiz/quiz-api';
 import { clearLastQuizSessionId, getLastQuizSessionId } from '@/features/quiz/quiz-session-store';
+import { loadSelectedStudio } from '@/features/studio/local-studio-storage';
 import { ApiError } from '@/shared/api/api-error';
 import { digitsToRuE164 } from '@/shared/lib/phone';
 import { SafeAreaPadding } from '@/shared/ui/safe-area';
+import { ConsentType } from '@srs/shared-types';
+
+const REQUIRED_CONSENT_TYPES = new Set<ConsentType>([
+  ConsentType.PersonalData,
+  ConsentType.MedicalInformation,
+]);
+
+function hasRequiredConsents(consents: { type: string }[]): boolean {
+  const got = new Set(consents.map((c) => c.type as ConsentType));
+  for (const t of REQUIRED_CONSENT_TYPES) {
+    if (!got.has(t)) return false;
+  }
+  return true;
+}
 
 function onlyDigits(s: string) {
   return s.replace(/\D/g, '');
@@ -89,7 +105,7 @@ export default function OtpScreen() {
     void (async () => {
       try {
         const phone = digitsToRuE164(params.phone ?? '');
-        await verifyOtp({
+        const auth = await verifyOtp({
           phone,
           code: digits,
           deviceType: Platform.OS === 'ios' ? 'mobile_ios' : 'mobile_android',
@@ -104,7 +120,22 @@ export default function OtpScreen() {
           }
         }
         if (cancelled) return;
-        router.push('/(auth)/name');
+        const firstNameOk = auth.user.firstName.trim().length > 0;
+        const lastNameOk = auth.user.lastName.trim().length > 0;
+        if (!firstNameOk || !lastNameOk) {
+          router.replace('/(auth)/name');
+          return;
+        }
+
+        const consents = await fetchMyConsents().catch(() => null);
+        if (!consents || !hasRequiredConsents(consents)) {
+          router.replace('/(auth)/consent');
+          return;
+        }
+
+        const studio = await loadSelectedStudio().catch(() => null);
+        if (!studio?.id) router.replace('/(app)/studio-selector');
+        else router.replace('/(app)/(tabs)');
       } catch (e: unknown) {
         if (cancelled) return;
         const message = e instanceof ApiError ? e.message : '';

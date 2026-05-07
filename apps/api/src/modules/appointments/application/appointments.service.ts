@@ -1,3 +1,6 @@
+/* eslint-disable import/order */
+/* eslint-disable @typescript-eslint/consistent-type-imports -- Nest DI needs runtime imports */
+import { InjectQueue } from '@nestjs/bullmq';
 import {
   BadRequestException,
   ConflictException,
@@ -5,16 +8,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { AppointmentSource, AppointmentStatus, ShiftStatus, UserRole } from '@srs/shared-types';
-import { Queue } from 'bullmq';
+import type { Queue } from 'bullmq';
 import { addDays, addMinutes } from 'date-fns';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 
 import type { AppointmentsConfig } from '../../../config/appointments.config';
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
+import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 import { NotificationsService } from '../../notifications/application/notifications.service';
 import {
   APPOINTMENTS_QUEUE,
@@ -23,10 +26,8 @@ import {
   APPOINTMENT_LIFECYCLE_JOB_PREFIX,
 } from './appointments.jobs';
 import type { BookingSlotsQueryDto } from '../presentation/dto/booking-slots-query.dto';
-
-import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
-import type { CreateAppointmentProtocolDto } from '../presentation/dto/create-appointment-protocol.dto';
 import { CreateAppointmentDto } from '../presentation/dto/create-appointment.dto';
+import type { CreateAppointmentProtocolDto } from '../presentation/dto/create-appointment-protocol.dto';
 import { ListAppointmentsQueryDto } from '../presentation/dto/list-appointments-query.dto';
 import { RescheduleAppointmentDto } from '../presentation/dto/reschedule-appointment.dto';
 import type { UpdateAppointmentProtocolDto } from '../presentation/dto/update-appointment-protocol.dto';
@@ -37,6 +38,7 @@ export type BookingSlotItemDto = {
   startsAt: string;
   label: string;
   available: boolean;
+  unavailableReason?: string;
 };
 
 export type BookingSlotsDayDto = {
@@ -44,6 +46,7 @@ export type BookingSlotsDayDto = {
   weekdayShort: string;
   weekdayIndex: number;
   disabled: boolean;
+  disabledReason?: string;
   slots: BookingSlotItemDto[];
 };
 
@@ -164,7 +167,14 @@ export class AppointmentsService {
       const weekdayShort = weekdayIndex >= 0 ? weekdayRu[weekdayIndex] : '?';
 
       if (closedYmd.has(ymd)) {
-        daysOut.push({ date: ymd, weekdayShort, weekdayIndex: weekdayIndex >= 0 ? weekdayIndex : 0, disabled: true, slots: [] });
+        daysOut.push({
+          date: ymd,
+          weekdayShort,
+          weekdayIndex: weekdayIndex >= 0 ? weekdayIndex : 0,
+          disabled: true,
+          disabledReason: 'Студия закрыта в этот день',
+          slots: [],
+        });
         continue;
       }
 
@@ -188,6 +198,7 @@ export class AppointmentsService {
           weekdayShort,
           weekdayIndex: weekdayIndex >= 0 ? weekdayIndex : 0,
           disabled: true,
+          disabledReason: 'В этот день студия не работает',
           slots: [],
         });
         continue;
@@ -209,12 +220,14 @@ export class AppointmentsService {
           weekdayShort,
           weekdayIndex: weekdayIndex >= 0 ? weekdayIndex : 0,
           disabled: true,
+          disabledReason: 'У специалиста нет смен в этот день',
           slots: [],
         });
         continue;
       }
 
       const slots: BookingSlotItemDto[] = [];
+      const reasonCounts = new Map<string, number>();
 
       for (let minutesFromMidnight = openMinutes; minutesFromMidnight + durationMinutes <= closeMinutes; minutesFromMidnight += SLOT_STEP_MINUTES) {
         const hh = Math.floor(minutesFromMidnight / 60);
@@ -237,15 +250,47 @@ export class AppointmentsService {
           startsAt: startsAt.toISOString(),
           label: `${hhStr}:${mmStr}`,
           available,
+          ...(available
+            ? {}
+            : {
+                unavailableReason: !coveredByShift
+                  ? 'Нет смены специалиста'
+                  : !withinHours
+                    ? 'Студия закрыта'
+                    : !leadOk
+                      ? 'Слишком рано для записи'
+                      : overlapsAppointment
+                        ? 'Занято'
+                        : 'Недоступно',
+              }),
         });
+
+        if (!available) {
+          const r =
+            !coveredByShift
+              ? 'Нет смены специалиста'
+              : !withinHours
+                ? 'Студия закрыта'
+                : !leadOk
+                  ? 'Слишком рано для записи'
+                  : overlapsAppointment
+                    ? 'Занято'
+                    : 'Недоступно';
+          reasonCounts.set(r, (reasonCounts.get(r) ?? 0) + 1);
+        }
       }
 
       const anyAvailable = slots.some((s) => s.available);
+      const disabledReason =
+        anyAvailable || reasonCounts.size === 0
+          ? undefined
+          : [...reasonCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'Нет доступного времени';
       daysOut.push({
         date: ymd,
         weekdayShort,
         weekdayIndex: weekdayIndex >= 0 ? weekdayIndex : 0,
         disabled: !anyAvailable,
+        disabledReason,
         slots,
       });
     }
@@ -401,13 +446,23 @@ export class AppointmentsService {
           lte: query.to,
         },
       },
+      include: {
+        client: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
       orderBy: [{ startsAt: 'asc' }],
       take: 200,   // защита от случайного дампа всей таблицы
     });
   }
 
-  async confirm(id: string) {
+  async confirm(id: string, actor: JwtAccessPayload) {
     const appointment = await this.ensureAppointmentExists(id);
+    await this.assertStaffCanManageStudio(actor, appointment.studioId);
     if (
       appointment.status === AppointmentStatus.CancelledByClient ||
       appointment.status === AppointmentStatus.CancelledByStudio
@@ -449,8 +504,9 @@ export class AppointmentsService {
     return updated;
   }
 
-  async cancelByStudio(id: string, reason?: string) {
-    await this.ensureAppointmentExists(id);
+  async cancelByStudio(id: string, actor: JwtAccessPayload, reason?: string) {
+    const appointment = await this.ensureAppointmentExists(id);
+    await this.assertStaffCanManageStudio(actor, appointment.studioId);
     const updated = await this.prisma.appointment.update({
       where: { id },
       data: {
@@ -464,8 +520,9 @@ export class AppointmentsService {
     return updated;
   }
 
-  async reschedule(id: string, dto: RescheduleAppointmentDto) {
+  async reschedule(id: string, actor: JwtAccessPayload, dto: RescheduleAppointmentDto) {
     const appointment = await this.ensureAppointmentExists(id);
+    await this.assertStaffCanManageStudio(actor, appointment.studioId);
     if (
       appointment.status === AppointmentStatus.CancelledByClient ||
       appointment.status === AppointmentStatus.CancelledByStudio

@@ -1,17 +1,36 @@
-import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import type { StartedRedisContainer } from '@testcontainers/redis';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
-type Containers = {
-  postgres: StartedPostgreSqlContainer;
-  redis: StartedRedisContainer;
-};
+import { getContainerRuntimeClient } from 'testcontainers';
 
 /** Jest globalTeardown: останавливает поднятые в globalSetup контейнеры. */
 export default async function globalTeardown(): Promise<void> {
-  const containers = (globalThis as unknown as { __TESTCONTAINERS__?: Containers })
-    .__TESTCONTAINERS__;
-  if (!containers) {
+  const infoPath = join(process.cwd(), '.testcontainers.json');
+  let raw: string;
+  try {
+    raw = readFileSync(infoPath, 'utf8');
+  } catch {
     return;
   }
-  await Promise.allSettled([containers.postgres.stop(), containers.redis.stop()]);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  if (!parsed || typeof parsed !== 'object') return;
+  const o = parsed as { postgresId?: unknown; redisId?: unknown };
+  const postgresId = typeof o.postgresId === 'string' ? o.postgresId : null;
+  const redisId = typeof o.redisId === 'string' ? o.redisId : null;
+  if (!postgresId && !redisId) return;
+
+  const client = await getContainerRuntimeClient();
+  const stop = async (id: string) => {
+    const container = client.container.getById(id);
+    await client.container.stop(container);
+  };
+  await Promise.allSettled([
+    ...(postgresId ? [stop(postgresId)] : []),
+    ...(redisId ? [stop(redisId)] : []),
+  ]);
 }

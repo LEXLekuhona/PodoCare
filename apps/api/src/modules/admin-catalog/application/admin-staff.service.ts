@@ -1,3 +1,4 @@
+/* eslint-disable import/order */
 import {
   BadRequestException,
   ConflictException,
@@ -5,13 +6,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { UserRole } from '@srs/shared-types';
 import { Prisma } from '@prisma/client';
+import { UserRole } from '@srs/shared-types';
 import argon2 from 'argon2';
 
-import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import { normalizePhone, normalizeEmail } from '../../../common/utils/normalize-phone';
 
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
+import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 import type { CreateStaffUserDto } from '../presentation/dto/create-staff-user.dto';
 import type { ListStaffQueryDto } from '../presentation/dto/list-staff.query.dto';

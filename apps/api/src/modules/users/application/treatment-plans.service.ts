@@ -1,7 +1,9 @@
+/* eslint-disable import/order */
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { TreatmentPlanStatus, TreatmentPlanStepStatus, type Prisma } from '@prisma/client';
 import { UserRole } from '@srs/shared-types';
 
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 import type { CreateTreatmentPlanDto } from '../presentation/dto/create-treatment-plan.dto';

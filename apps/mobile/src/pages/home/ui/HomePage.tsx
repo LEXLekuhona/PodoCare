@@ -83,9 +83,13 @@ export function HomePage() {
             <Text style={styles.brand}>Solodova Recovery System</Text>
           </RNView>
 
-          <Pressable hitSlop={12} style={styles.iconBtn} onPress={() => {}}>
+          <Pressable
+            hitSlop={12}
+            style={styles.iconBtn}
+            accessibilityLabel="Уведомления"
+            onPress={() => router.push('/(app)/notification-settings' as never)}
+          >
             <FontAwesome name="bell-o" size={18} color="#2D6A4F" />
-            <RNView style={styles.bellDot} />
           </Pressable>
         </View>
       </SafeAreaPadding>
@@ -279,17 +283,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'transparent',
     position: 'relative',
-  },
-  bellDot: {
-    position: 'absolute',
-    right: 9,
-    top: 9,
-    width: 7,
-    height: 7,
-    borderRadius: 9999,
-    backgroundColor: '#B42318',
-    borderWidth: 1,
-    borderColor: '#FFFFFF',
   },
   content: {
     padding: 16,

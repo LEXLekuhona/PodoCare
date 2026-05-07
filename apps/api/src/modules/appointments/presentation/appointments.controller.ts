@@ -13,13 +13,16 @@ import {
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { UserRole } from '@srs/shared-types'
+/* eslint-disable import/order */
 
 import { CurrentUser } from '../../auth/infrastructure/current-user.decorator'
 import { JwtAuthGuard } from '../../auth/infrastructure/jwt-auth.guard'
 import { Roles } from '../../auth/infrastructure/roles.decorator'
 import { RolesGuard } from '../../auth/infrastructure/roles.guard'
-import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy'
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { AppointmentsService } from '../application/appointments.service'
+// Nest ValidationPipe relies on runtime metadata for DTO classes.
+// `import type` breaks `design:paramtypes`, causing whitelist validation to reject all properties.
 import { BookingSlotsQueryDto } from './dto/booking-slots-query.dto'
 import { CancelByClientDto } from './dto/cancel-by-client.dto'
 import { CancelByStudioDto } from './dto/cancel-by-studio.dto'
@@ -28,6 +31,7 @@ import { CreateAppointmentDto } from './dto/create-appointment.dto'
 import { ListAppointmentsQueryDto } from './dto/list-appointments-query.dto'
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto'
 import { UpdateAppointmentProtocolDto } from './dto/update-appointment-protocol.dto'
+import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy'
 
 @ApiTags('appointments')
 @ApiBearerAuth()
@@ -97,22 +101,30 @@ export class AppointmentsController {
   @Patch(':id/confirm')
   @Roles(UserRole.Specialist, UserRole.StudioAdmin, UserRole.NetworkOwner, UserRole.SuperAdmin)
   @ApiOperation({ summary: 'Подтверждает запись.' })
-  confirm(@Param('id') id: string) {
-    return this.appointmentsService.confirm(id);
+  confirm(@Param('id') id: string, @CurrentUser() user: JwtAccessPayload) {
+    return this.appointmentsService.confirm(id, user);
   }
 
   @Patch(':id/cancel-by-studio')
   @Roles(UserRole.Specialist, UserRole.StudioAdmin, UserRole.NetworkOwner, UserRole.SuperAdmin)
   @ApiOperation({ summary: 'Отмена записи студией.' })
-  cancelByStudio(@Param('id') id: string, @Body() body: CancelByStudioDto) {
-    return this.appointmentsService.cancelByStudio(id, body.reason);
+  cancelByStudio(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtAccessPayload,
+    @Body() body: CancelByStudioDto,
+  ) {
+    return this.appointmentsService.cancelByStudio(id, user, body.reason);
   }
 
   @Patch(':id/reschedule')
   @Roles(UserRole.Specialist, UserRole.StudioAdmin, UserRole.NetworkOwner, UserRole.SuperAdmin)
   @ApiOperation({ summary: 'Перенос записи на новое время с пересчётом напоминаний.' })
-  reschedule(@Param('id') id: string, @Body() body: RescheduleAppointmentDto) {
-    return this.appointmentsService.reschedule(id, body);
+  reschedule(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtAccessPayload,
+    @Body() body: RescheduleAppointmentDto,
+  ) {
+    return this.appointmentsService.reschedule(id, user, body);
   }
   @Patch(':id/cancel-by-client')
   @Roles(UserRole.Client)

@@ -1,10 +1,11 @@
-import type { INestApplication } from '@nestjs/common';
 import { ContentAudience, ContentFormat, UserRole } from '@srs/shared-types';
 import argon2 from 'argon2';
 import request from 'supertest';
 
-import { PrismaService } from '../../src/infrastructure/prisma/prisma.service';
 import { buildTestApp } from '../helpers/build-test-app';
+
+import type { PrismaService } from '../../src/infrastructure/prisma/prisma.service';
+import type { INestApplication } from '@nestjs/common';
 
 async function loginStaff(app: INestApplication, email: string, password: string): Promise<string> {
   const login = await request(app.getHttpServer()).post('/api/v1/auth/staff/login').send({
@@ -187,14 +188,34 @@ describe('Content Funnel (e2e)', () => {
       .get('/api/v1/client/content/feed')
       .set('Authorization', `Bearer ${clientToken}`);
     expect(feed.status).toBe(200);
-    expect(feed.body.items).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: createItem.body.id,
-          title: 'Видео: базовый уход',
-          paywall: expect.objectContaining({ mode: 'FREE', isLocked: false }),
-        }),
-      ]),
+    const feedItem = feed.body.items.find((x: { id: string }) => x.id === createItem.body.id);
+    expect(feedItem).toBeDefined();
+    expect(feedItem).toEqual(
+      expect.objectContaining({
+        id: createItem.body.id,
+        title: 'Видео: базовый уход',
+        publishedAt: expect.any(String),
+        seriesId: createSeries.body.id,
+        audience: 'CLIENT',
+        format: 'VIDEO',
+        paywall: expect.objectContaining({ mode: 'FREE', isLocked: false, priceMinor: 0, currency: 'RUB' }),
+        progress: expect.objectContaining({ percent: 0, completedAt: null }),
+        ctas: [
+          expect.objectContaining({
+            id: ctaId,
+            target: 'EXTERNAL_URL',
+            label: 'Записаться на консультацию',
+            subtitle: null,
+            sortOrder: 0,
+            targetExternalUrl: 'https://solodova-recovery.app/consultation',
+            targetProgramId: null,
+            targetSeriesId: null,
+            targetServiceId: null,
+            targetPhysicalGoodId: null,
+            targetQuizId: null,
+          }),
+        ],
+      }),
     );
 
     const saveProgress = await request(app.getHttpServer())
@@ -210,7 +231,17 @@ describe('Content Funnel (e2e)', () => {
       .set('Authorization', `Bearer ${clientToken}`)
       .send({});
     expect(clickCta.status).toBe(201);
-    expect(clickCta.body.ok).toBe(true);
+    expect(clickCta.body).toMatchObject({
+      ok: true,
+      ctaId,
+      target: 'EXTERNAL_URL',
+      targetExternalUrl: 'https://solodova-recovery.app/consultation',
+      targetProgramId: null,
+      targetSeriesId: null,
+      targetServiceId: null,
+      targetPhysicalGoodId: null,
+      targetQuizId: null,
+    });
 
     const progress = await prisma.contentItemProgress.findUnique({
       where: { userId_itemId: { userId: client.id, itemId: createItem.body.id } },

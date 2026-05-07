@@ -4,8 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { UserRole } from '@srs/shared-types';
 import { Prisma } from '@prisma/client';
+import { UserRole } from '@srs/shared-types';
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- токен Nest DI
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
@@ -13,14 +13,14 @@ import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 import type { CreateFaqItemDto } from '../presentation/dto/create-faq-item.dto';
 import type { CreateHealthConcernDto } from '../presentation/dto/create-health-concern.dto';
-import type { CreateStudioDirectionDto } from '../presentation/dto/create-studio-direction.dto';
 import type { CreateNetworkDto } from '../presentation/dto/create-network.dto';
+import type { CreateStudioDirectionDto } from '../presentation/dto/create-studio-direction.dto';
 import type { CreateStudioDto } from '../presentation/dto/create-studio.dto';
 import type { ListStudiosQueryDto } from '../presentation/dto/list-studios.query.dto';
 import type { UpdateFaqItemDto } from '../presentation/dto/update-faq-item.dto';
 import type { UpdateHealthConcernDto } from '../presentation/dto/update-health-concern.dto';
-import type { UpdateStudioDirectionDto } from '../presentation/dto/update-studio-direction.dto';
 import type { UpdateNetworkDto } from '../presentation/dto/update-network.dto';
+import type { UpdateStudioDirectionDto } from '../presentation/dto/update-studio-direction.dto';
 import type { UpdateStudioDto } from '../presentation/dto/update-studio.dto';
 
 function isUniqueViolation(e: unknown): e is Prisma.PrismaClientKnownRequestError {

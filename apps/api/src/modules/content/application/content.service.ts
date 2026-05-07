@@ -5,9 +5,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
-  UserRole,
-} from '@srs/shared-types';
-import {
   ContentAudience,
   ContentCtaTarget,
   FunnelEventType,
@@ -18,10 +15,19 @@ import {
   Prisma,
   PushProvider,
 } from '@prisma/client';
+import {
+  UserRole,
+  type ClientContentCtaClickResponse,
+  type ClientContentFeedResponse,
+  type ClientContentProgressSaved,
+} from '@srs/shared-types';
 
-import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
-import { PushDeliveryService } from '../../notifications/infrastructure/push/push-delivery.service';
 import { resolvePaywallMode } from './content-funnel.policy';
+// Nest constructor injection: классы нужны как значения рантайма, не только как типы.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- DI
+import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- DI
+import { PushDeliveryService } from '../../notifications/infrastructure/push/push-delivery.service';
 
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 import type { CreateClientContentProgressDto } from '../presentation/dto/create-client-content-progress.dto';
@@ -298,7 +304,7 @@ export class ContentService {
     });
   }
 
-  async getClientFeed(userId?: string) {
+  async getClientFeed(userId?: string): Promise<ClientContentFeedResponse> {
     const paidSeriesIds = userId ? await this.getPaidSeriesIds(userId) : new Set<string>();
     const preferredTags = await this.getPreferredTagsFromLatestQuiz(userId);
     const progressRows = userId
@@ -353,34 +359,46 @@ export class ContentService {
       .sort((a, b) => a.rank - b.rank)
       .map((entry) => entry.item);
 
-    return {
-      items: ordered.map((i) => {
-        const isPaid = i.series.priceMinor > 0;
-        const locked = isPaid && !i.isFreePreview && !paidSeriesIds.has(i.seriesId);
-        const progress = progressByItemId.get(i.id);
-        return {
-          id: i.id,
-          title: i.title,
-          description: i.description,
-          coverImageUrl: i.coverImageUrl,
-          publishedAt: i.publishedAt ? i.publishedAt.toISOString() : null,
-          format: i.format,
-          seriesId: i.seriesId,
-          audience: i.audience,
-          paywall: {
-            mode: resolvePaywallMode(i.series.priceMinor),
-            isLocked: locked,
-            priceMinor: i.series.priceMinor,
-            currency: i.series.currency,
-          },
-          progress: {
-            percent: progress?.percent ?? 0,
-            completedAt: progress?.completedAt ? progress.completedAt.toISOString() : null,
-          },
-          ctas: i.ctas,
-        };
-      }),
-    };
+    const feedItems = ordered.map((i) => {
+      const isPaid = i.series.priceMinor > 0;
+      const locked = isPaid && !i.isFreePreview && !paidSeriesIds.has(i.seriesId);
+      const progress = progressByItemId.get(i.id);
+      return {
+        id: i.id,
+        title: i.title,
+        description: i.description,
+        coverImageUrl: i.coverImageUrl,
+        publishedAt: i.publishedAt ? i.publishedAt.toISOString() : null,
+        format: i.format,
+        seriesId: i.seriesId,
+        audience: i.audience,
+        paywall: {
+          mode: resolvePaywallMode(i.series.priceMinor),
+          isLocked: locked,
+          priceMinor: i.series.priceMinor,
+          currency: i.series.currency,
+        },
+        progress: {
+          percent: progress?.percent ?? 0,
+          completedAt: progress?.completedAt ? progress.completedAt.toISOString() : null,
+        },
+        ctas: i.ctas.map((c) => ({
+          id: c.id,
+          target: c.target,
+          label: c.label,
+          subtitle: c.subtitle ?? null,
+          sortOrder: c.sortOrder,
+          targetProgramId: c.targetProgramId ?? null,
+          targetSeriesId: c.targetSeriesId ?? null,
+          targetServiceId: c.targetServiceId ?? null,
+          targetPhysicalGoodId: c.targetPhysicalGoodId ?? null,
+          targetQuizId: c.targetQuizId ?? null,
+          targetExternalUrl: c.targetExternalUrl ?? null,
+        })),
+      };
+    });
+    // Prisma $Enums совпадают по строковым значениям с @srs/shared-types, но TS различает типы.
+    return { items: feedItems } as ClientContentFeedResponse;
   }
 
   private async getPreferredTagsFromLatestQuiz(userId?: string): Promise<Set<string>> {
@@ -410,7 +428,11 @@ export class ContentService {
     return 100 - hits * 10 + fallbackIndex;
   }
 
-  async saveClientProgress(userId: string, itemId: string, dto: CreateClientContentProgressDto) {
+  async saveClientProgress(
+    userId: string,
+    itemId: string,
+    dto: CreateClientContentProgressDto,
+  ): Promise<ClientContentProgressSaved> {
     const item = await this.assertClientCanAccessItem(userId, itemId);
     const percent = Math.max(0, Math.min(100, dto.percent));
     const existing = await this.prisma.contentItemProgress.findUnique({
@@ -469,7 +491,7 @@ export class ContentService {
     };
   }
 
-  async clickClientCta(userId: string, itemId: string, ctaId: string) {
+  async clickClientCta(userId: string, itemId: string, ctaId: string): Promise<ClientContentCtaClickResponse> {
     const item = await this.assertClientCanAccessItem(userId, itemId);
     const cta = await this.prisma.contentCta.findFirst({
       where: { id: ctaId, itemId, isActive: true },
@@ -490,7 +512,17 @@ export class ContentService {
         source: 'mobile',
       },
     });
-    return { ok: true as const, ctaId: cta.id, target: cta.target };
+    return {
+      ok: true as const,
+      ctaId: cta.id,
+      target: cta.target,
+      targetProgramId: cta.targetProgramId ?? null,
+      targetSeriesId: cta.targetSeriesId ?? null,
+      targetServiceId: cta.targetServiceId ?? null,
+      targetPhysicalGoodId: cta.targetPhysicalGoodId ?? null,
+      targetQuizId: cta.targetQuizId ?? null,
+      targetExternalUrl: cta.targetExternalUrl ?? null,
+    } as ClientContentCtaClickResponse;
   }
 
   private async assertClientCanAccessItem(userId: string, itemId: string) {

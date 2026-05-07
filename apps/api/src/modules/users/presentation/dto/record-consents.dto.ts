@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { ConsentType } from '@prisma/client';
+import { ConsentType } from '@srs/shared-types';
 import { Type } from 'class-transformer';
 import { ArrayMinSize, IsArray, IsEnum, IsString, Length, ValidateNested } from 'class-validator';
 
