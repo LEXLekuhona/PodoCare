@@ -24,6 +24,10 @@ jobs:
           cache: 'pnpm'
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm --filter @srs/api exec prisma generate
+
       - run: pnpm turbo run lint typecheck
 
   core-e2e-gate:
