@@ -1,3 +1,6 @@
+import { triggerSessionExpiredNavigation } from '@/features/auth/session-expired-nav';
+import { takeRefreshAuthRejected } from '@/features/auth/session-refresh-state';
+
 import { ApiError } from '@/shared/api/api-error';
 
 export async function withUnauthorizedRetry<T>(
@@ -12,6 +15,9 @@ export async function withUnauthorizedRetry<T>(
     }
     const ok = await recoverFromUnauthorized();
     if (!ok) {
+      if (takeRefreshAuthRejected()) {
+        triggerSessionExpiredNavigation();
+      }
       throw e;
     }
     return await attempt();

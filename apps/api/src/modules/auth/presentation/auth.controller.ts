@@ -1,16 +1,17 @@
-/* eslint-disable import/order */
+ 
 import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { AuthService } from '../application/auth.service';
+
 // Nest ValidationPipe relies on runtime metadata for DTO classes.
 // `import type` breaks `design:paramtypes`, causing whitelist validation to reject all properties.
-import { RefreshTokenDto } from './dto/refresh-token.dto';
-import { RequestOtpDto } from './dto/request-otp.dto';
-import { StaffLoginDto } from './dto/staff-login.dto';
-import { VerifyOtpDto } from './dto/verify-otp.dto';
+import type { RefreshTokenDto } from './dto/refresh-token.dto';
+import type { RequestOtpDto } from './dto/request-otp.dto';
+import type { StaffLoginDto } from './dto/staff-login.dto';
+import type { VerifyOtpDto } from './dto/verify-otp.dto';
 
 const IS_TEST = process.env.NODE_ENV === 'test';
 const OTP_REQUEST_LIMIT = IS_TEST ? 10_000 : 5;

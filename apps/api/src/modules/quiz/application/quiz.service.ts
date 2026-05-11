@@ -115,6 +115,24 @@ export class QuizService {
     return this.mapPublicQuiz(quiz);
   }
 
+  /** Опубликованный квиз по id (для CTA и deep-link; без авторизации). */
+  async getPublishedQuizById(quizId: string) {
+    const quiz = await this.prisma.diagnosticQuiz.findFirst({
+      where: { id: quizId, isPublished: true },
+      include: {
+        questions: {
+          orderBy: { order: 'asc' },
+          include: { options: { orderBy: { order: 'asc' } } },
+        },
+        outcomes: { orderBy: { sortOrder: 'asc' } },
+      },
+    });
+    if (!quiz) {
+      throw new NotFoundException('Квиз недоступен');
+    }
+    return this.mapPublicQuiz(quiz);
+  }
+
   async createAdmin(user: JwtLikeUser, dto: CreateQuizAdminDto) {
     this.ensureAdminRole(user);
     const quiz = await this.prisma.$transaction(async (tx) => {
@@ -313,8 +331,60 @@ export class QuizService {
     return { merged: true as const, alreadyMerged: false as const };
   }
 
+  private buildQuizResultRecommendedCta(
+    outcome: {
+      primaryCtaLabel: string | null;
+      primaryCtaTarget: ContentCtaTarget | null;
+      recommendedContentSeriesIds: string[];
+      recommendedProgramId: string | null;
+      recommendedPhysicalGoodIds: string[];
+      recommendedServiceIds: string[];
+    },
+    sessionQuizId: string,
+  ) {
+    if (!outcome.primaryCtaTarget) {
+      return {
+        label: outcome.primaryCtaLabel,
+        target: null as ContentCtaTarget | null,
+        targetProgramId: null as string | null,
+        targetSeriesId: null as string | null,
+        targetServiceId: null as string | null,
+        targetPhysicalGoodId: null as string | null,
+        targetQuizId: null as string | null,
+        targetExternalUrl: null as string | null,
+      };
+    }
+    const t = outcome.primaryCtaTarget;
+    const base = {
+      label: outcome.primaryCtaLabel,
+      target: t,
+      targetProgramId: null as string | null,
+      targetSeriesId: null as string | null,
+      targetServiceId: null as string | null,
+      targetPhysicalGoodId: null as string | null,
+      targetQuizId: null as string | null,
+      targetExternalUrl: null as string | null,
+    };
+    switch (t) {
+      case ContentCtaTarget.PROGRAM:
+      case ContentCtaTarget.PROGRAM_INQUIRY:
+        return { ...base, targetProgramId: outcome.recommendedProgramId };
+      case ContentCtaTarget.CONTENT_SERIES:
+        return { ...base, targetSeriesId: outcome.recommendedContentSeriesIds[0] ?? null };
+      case ContentCtaTarget.SERVICE:
+        return { ...base, targetServiceId: outcome.recommendedServiceIds[0] ?? null };
+      case ContentCtaTarget.PHYSICAL_GOOD:
+        return { ...base, targetPhysicalGoodId: outcome.recommendedPhysicalGoodIds[0] ?? null };
+      case ContentCtaTarget.QUIZ:
+        return { ...base, targetQuizId: sessionQuizId };
+      default:
+        return base;
+    }
+  }
+
   private buildCompleteResponse(session: {
     id: string;
+    quizId: string;
     totalScore: number;
     resultLevel: QuizResultLevel;
     outcome?: {
@@ -324,6 +394,9 @@ export class QuizService {
       primaryCtaLabel: string | null;
       primaryCtaTarget: ContentCtaTarget | null;
       recommendedContentSeriesIds: string[];
+      recommendedProgramId: string | null;
+      recommendedPhysicalGoodIds: string[];
+      recommendedServiceIds: string[];
     } | null;
   }) {
     return {
@@ -332,12 +405,7 @@ export class QuizService {
       result: {
         segment: session.resultLevel,
         score: session.totalScore,
-        recommendedCta: session.outcome
-          ? {
-              label: session.outcome.primaryCtaLabel,
-              target: session.outcome.primaryCtaTarget,
-            }
-          : null,
+        recommendedCta: session.outcome ? this.buildQuizResultRecommendedCta(session.outcome, session.quizId) : null,
         recommendedContent: session.outcome?.recommendedContentSeriesIds ?? [],
         title: session.outcome?.title ?? null,
         description: session.outcome?.description ?? null,

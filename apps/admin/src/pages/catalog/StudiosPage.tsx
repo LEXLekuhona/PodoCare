@@ -6,8 +6,18 @@ import { useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
-import { DEFAULT_OPENING_HOURS_JSON } from '../../lib/default-opening-hours';
+import {
+  OPENING_HOURS_UI_ORDER,
+  OPENING_HOURS_WEEKDAY_LABEL,
+  type DayOpeningDraft,
+  defaultOpeningHoursDraft,
+  mergeOpeningHoursWithDraft,
+  openingHoursToDraft,
+  validateOpeningHoursDraft,
+} from '../../lib/opening-hours-form';
 import { canMutateTenantCatalog } from '../../lib/roles';
+import { DeleteIcon } from '../../ui/DeleteIcon';
+import EditIcon from '../../ui/EditIcon';
 import { FilterBar } from '../../ui/FilterBar';
 import { useToast } from '../../ui/ToastContext';
 
@@ -38,20 +48,7 @@ interface StudioFormState {
   email: string;
   description: string;
   isActive: boolean;
-  openingHoursJson: string;
-}
-
-function parseOpeningHours(raw: string): Record<string, unknown> {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error('Некорректный JSON в поле «Часы работы»');
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('openingHours должен быть JSON-объектом');
-  }
-  return parsed as Record<string, unknown>;
+  openingHoursDays: DayOpeningDraft[];
 }
 
 export function StudiosPage() {
@@ -68,10 +65,30 @@ export function StudiosPage() {
     mode: 'create' | 'edit';
     id?: string;
     form: StudioFormState;
+    /** Сырое `openingHours` с сервера: при сохранении мержим, чтобы не терять лишние ключи в JSON. */
+    openingHoursBaseline?: unknown;
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') ?? '');
   const debouncedQuery = useDebouncedValue(searchQuery);
+
+  const patchOpeningHoursDay = useCallback(
+    (weekday: number, patch: Partial<Pick<DayOpeningDraft, 'closed' | 'open' | 'close'>>) => {
+      setModal((m) => {
+        if (!m) return m;
+        return {
+          ...m,
+          form: {
+            ...m.form,
+            openingHoursDays: m.form.openingHoursDays.map((d) =>
+              d.weekday === weekday ? { ...d, ...patch } : d,
+            ),
+          },
+        };
+      });
+    },
+    [],
+  );
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -108,7 +125,7 @@ export function StudiosPage() {
         email: '',
         description: '',
         isActive: true,
-        openingHoursJson: DEFAULT_OPENING_HOURS_JSON,
+        openingHoursDays: defaultOpeningHoursDraft(),
       },
     });
   }
@@ -117,6 +134,7 @@ export function StudiosPage() {
     setModal({
       mode: 'edit',
       id: row.id,
+      openingHoursBaseline: row.openingHours,
       form: {
         networkId: row.networkId,
         name: row.name,
@@ -127,7 +145,7 @@ export function StudiosPage() {
         email: row.email ?? '',
         description: row.description ?? '',
         isActive: row.isActive,
-        openingHoursJson: JSON.stringify(row.openingHours, null, 2),
+        openingHoursDays: openingHoursToDraft(row.openingHours),
       },
     });
   }
@@ -138,14 +156,16 @@ export function StudiosPage() {
     setSaving(true);
     setError(null);
     try {
-      let openingHours: Record<string, unknown>;
-      try {
-        openingHours = parseOpeningHours(modal.form.openingHoursJson);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Ошибка JSON');
+      const hoursErr = validateOpeningHoursDraft(modal.form.openingHoursDays);
+      if (hoursErr) {
+        setError(hoursErr);
         setSaving(false);
         return;
       }
+      const openingHours = mergeOpeningHoursWithDraft(
+        modal.openingHoursBaseline,
+        modal.form.openingHoursDays,
+      );
 
       const common = {
         name: modal.form.name.trim(),
@@ -288,12 +308,24 @@ export function StudiosPage() {
                     {canMutate || user?.role === UserRole.StudioAdmin ? (
                       <td>
                         <span className="inline-actions">
-                          <button type="button" onClick={() => openEdit(r)}>
-                            Изменить
+                          <button
+                            type="button"
+                            className="action-icon-btn"
+                            aria-label="Изменить студию"
+                            title="Изменить"
+                            onClick={() => openEdit(r)}
+                          >
+                            <EditIcon />
                           </button>
                           {canMutate ? (
-                            <button type="button" className="danger" onClick={() => void remove(r.id, r.name)}>
-                              Удалить
+                            <button
+                              type="button"
+                              className="danger action-icon-btn"
+                              aria-label="Удалить студию"
+                              title="Удалить"
+                              onClick={() => void remove(r.id, r.name)}
+                            >
+                              <DeleteIcon />
                             </button>
                           ) : null}
                         </span>
@@ -320,7 +352,7 @@ export function StudiosPage() {
         <div className="modal-backdrop" role="presentation" onClick={() => setModal(null)}>
           <div
             className="modal"
-            style={{ width: 'min(640px, 100%)' }}
+            style={{ width: 'min(720px, 100%)' }}
             role="dialog"
             onClick={(ev) => ev.stopPropagation()}
           >
@@ -438,20 +470,78 @@ export function StudiosPage() {
                 </label>
               </div>
               <div className="field">
-                <label htmlFor="st-hours">Часы работы (JSON)</label>
-                <textarea
-                  id="st-hours"
-                  className="mono"
-                  rows={10}
-                  value={modal.form.openingHoursJson}
-                  onChange={(ev) =>
-                    setModal({
-                      ...modal,
-                      form: { ...modal.form, openingHoursJson: ev.target.value },
-                    })
-                  }
-                  required
-                />
+                <p id="st-hours-label" style={{ fontWeight: 600, margin: '0 0 0.35rem' }}>
+                  Часы работы
+                </p>
+                <p style={{ fontSize: '0.85rem', color: 'var(--muted)', margin: '0 0 0.75rem' }}>
+                  Укажите интервал приёма по местному времени студии (часовой пояс выше). Выходные
+                  отметьте галочкой — в эти дни запись клиентов вне расписания будет недоступна.
+                  Нужен хотя бы один рабочий день.
+                </p>
+                <div
+                  role="group"
+                  aria-labelledby="st-hours-label"
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.65rem',
+                    padding: '0.75rem',
+                    borderRadius: 8,
+                    border: '1px solid var(--border)',
+                    background: 'var(--surface-weak)',
+                  }}
+                >
+                  <div className="studio-opening-hours-grid-header">
+                    <span>День</span>
+                    <span />
+                    <span>Открытие</span>
+                    <span>Закрытие</span>
+                  </div>
+                  {OPENING_HOURS_UI_ORDER.map((weekday) => {
+                    const day = modal.form.openingHoursDays.find((d) => d.weekday === weekday);
+                    if (!day) return null;
+                    const label = OPENING_HOURS_WEEKDAY_LABEL[weekday];
+                    return (
+                      <div key={weekday} className="studio-opening-hours-grid-row">
+                        <span style={{ fontWeight: 500 }}>{label}</span>
+                        <label
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            fontSize: '0.9rem',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={day.closed}
+                            onChange={(ev) => patchOpeningHoursDay(weekday, { closed: ev.target.checked })}
+                          />
+                          Выходной
+                        </label>
+                        <div className="field" style={{ margin: 0 }}>
+                          <input
+                            type="time"
+                            aria-label={`${label}: открытие`}
+                            value={day.open}
+                            disabled={day.closed}
+                            onChange={(ev) => patchOpeningHoursDay(weekday, { open: ev.target.value })}
+                          />
+                        </div>
+                        <div className="field" style={{ margin: 0 }}>
+                          <input
+                            type="time"
+                            aria-label={`${label}: закрытие`}
+                            value={day.close}
+                            disabled={day.closed}
+                            onChange={(ev) => patchOpeningHoursDay(weekday, { close: ev.target.value })}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
               <div className="modal-actions">
                 <button type="button" onClick={() => setModal(null)}>

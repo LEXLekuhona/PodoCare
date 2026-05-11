@@ -1,15 +1,28 @@
 import { getApiBaseUrl } from '@/shared/config/env';
 
 import { ApiError } from '@/shared/api/api-error';
+import {
+  DEV_NETWORK_HINT,
+  USER_MUTATION_OFFLINE,
+  USER_OFFLINE_READ_FAILED,
+  USER_REQUEST_TIMEOUT,
+  USER_SERVER_NO_CACHED_DATA,
+} from '@/shared/api/user-facing-errors';
+import { fetchIsOffline } from '@/shared/network/connectivity';
 
 export { ApiError } from '@/shared/api/api-error';
 
-const NETWORK_ERROR_RU =
-  'Нет связи с сервером. В корне проекта выполните: pnpm dev:stack:infra или pnpm dev:android.';
+function isDevBundle(): boolean {
+  return typeof __DEV__ !== 'undefined' && __DEV__;
+}
+
+export type ApiFetchInit = RequestInit & {
+  /** Не блокировать мутации при офлайне (например локальный выход без сети — не используется для обхода бизнес-операций). */
+  skipOfflineMutationGuard?: boolean;
+};
 
 const DEFAULT_TIMEOUT_MS = 25_000;
 
-/** OkHttp иногда добавляет `?_=` на стороне нативного стека; если параметр попадает в URL из JS — убираем. */
 function stripUnderscoreCacheParam(relPath: string): string {
   const i = relPath.indexOf('?');
   if (i === -1) return relPath;
@@ -63,7 +76,18 @@ function messageFromErrorPayload(payload: unknown, fallback: string): string {
   return fallback;
 }
 
-export async function apiFetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+function methodRequiresServerWrite(init?: ApiFetchInit): boolean {
+  const m = (init?.method ?? 'GET').toUpperCase();
+  return m !== 'GET' && m !== 'HEAD';
+}
+
+export async function apiFetchJson<T>(path: string, init?: ApiFetchInit): Promise<T> {
+  if (methodRequiresServerWrite(init) && !init?.skipOfflineMutationGuard) {
+    if (await fetchIsOffline()) {
+      throw new ApiError(USER_MUTATION_OFFLINE, 0, undefined, 'NO_INTERNET');
+    }
+  }
+
   const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
   const normalizedPath = stripUnderscoreCacheParam(path.startsWith('/') ? path : `/${path}`);
 
@@ -80,12 +104,19 @@ export async function apiFetchJson<T>(path: string, init?: RequestInit): Promise
     } as RequestInit);
   } catch (e: unknown) {
     if (e instanceof DOMException && e.name === 'AbortError') {
-      throw new ApiError('Время ожидания ответа истекло. Проверьте интернет и попробуйте ещё раз.', 0);
+      const msg = isDevBundle() ? `${USER_REQUEST_TIMEOUT} ${DEV_NETWORK_HINT}` : USER_REQUEST_TIMEOUT;
+      throw new ApiError(msg, 0, undefined, 'TIMEOUT');
     }
     if (isLikelyNetworkFailure(e)) {
-      throw new ApiError(NETWORK_ERROR_RU, 0);
+      if (await fetchIsOffline()) {
+        const base = methodRequiresServerWrite(init) ? USER_MUTATION_OFFLINE : USER_OFFLINE_READ_FAILED;
+        const msg = isDevBundle() ? `${base} ${DEV_NETWORK_HINT}` : base;
+        throw new ApiError(msg, 0, undefined, 'NO_INTERNET');
+      }
+      const msg = isDevBundle() ? `${USER_SERVER_NO_CACHED_DATA} ${DEV_NETWORK_HINT}` : USER_SERVER_NO_CACHED_DATA;
+      throw new ApiError(msg, 0, undefined, 'SERVER_UNAVAILABLE');
     }
-    throw new ApiError('Не удалось выполнить запрос', 0);
+    throw new ApiError('Не удалось выполнить запрос', 0, undefined, 'SERVER_UNAVAILABLE');
   }
 
   if (res.ok) {
@@ -93,15 +124,15 @@ export async function apiFetchJson<T>(path: string, init?: RequestInit): Promise
     const text = await res.text();
     const trimmed = text.trim();
     if (!trimmed) {
-      throw new ApiError('Сервер вернул пустой ответ', res.status);
+      throw new ApiError('Сервер вернул пустой ответ', res.status, undefined, 'SERVER_UNAVAILABLE');
     }
     if (!isJsonResponse(res)) {
-      throw new ApiError('Сервер вернул неожиданный формат ответа', res.status);
+      throw new ApiError('Сервер вернул неожиданный формат ответа', res.status, undefined, 'SERVER_UNAVAILABLE');
     }
     try {
       return JSON.parse(trimmed) as T;
     } catch {
-      throw new ApiError('Некорректный ответ сервера', res.status);
+      throw new ApiError('Некорректный ответ сервера', res.status, undefined, 'SERVER_UNAVAILABLE');
     }
   }
 
@@ -114,9 +145,17 @@ export async function apiFetchJson<T>(path: string, init?: RequestInit): Promise
     // ignore
   }
 
+  if (res.status >= 500) {
+    throw new ApiError(
+      isDevBundle() ? `${USER_SERVER_NO_CACHED_DATA} ${DEV_NETWORK_HINT}` : USER_SERVER_NO_CACHED_DATA,
+      res.status,
+      payload,
+      'SERVER_UNAVAILABLE',
+    );
+  }
+
   const fallback = rawText?.trim() ? rawText.trim() : `Request failed with status ${res.status}`;
   const message = messageFromErrorPayload(payload, fallback);
 
   throw new ApiError(message, res.status, payload);
 }
-

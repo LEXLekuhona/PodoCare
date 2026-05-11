@@ -11,6 +11,7 @@ import { UserRole } from '@srs/shared-types';
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- токен Nest DI
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
+import { validateContentItemBody } from '../../content/application/content-body.validator';
 
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 import type { CreateContentItemDto } from '../presentation/dto/create-content-item.dto';
@@ -250,6 +251,8 @@ export class AdminEducationService {
       throw new ConflictException('Серия принадлежит другой сети');
     }
 
+    validateContentItemBody(dto.format, dto.body);
+
     const slug =
       dto.slug?.trim() ??
       `${slugBaseFromTitle(dto.title)}-${makeUniqueSlugPart()}`;
@@ -288,6 +291,10 @@ export class AdminEducationService {
     const existing = await this.prisma.contentItem.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Материал не найден');
     await this.assertNetworkScope(user, existing.networkId);
+
+    if (dto.body !== undefined) {
+      validateContentItemBody(dto.format ?? existing.format, dto.body);
+    }
 
     try {
       return await this.prisma.contentItem.update({

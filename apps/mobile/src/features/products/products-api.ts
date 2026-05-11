@@ -10,6 +10,8 @@ export type StudioProductDto = {
   imageUrls: string[];
   priceMinor: number;
   currency: string;
+  isAvailable: boolean;
+  stock: number | null;
 };
 
 export async function fetchStudioProducts(studioId: string): Promise<StudioProductDto[]> {

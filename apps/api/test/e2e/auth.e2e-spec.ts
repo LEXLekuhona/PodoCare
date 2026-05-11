@@ -49,6 +49,8 @@ describe('Auth (e2e)', () => {
     expect(verifyOtp.status).toBe(201);
     expect(verifyOtp.body.user.phone).toBe('+79991112233');
     expect(verifyOtp.body.user.role).toBe(UserRole.Client);
+    expect(verifyOtp.body.user.firstName).toBe('');
+    expect(verifyOtp.body.user.lastName).toBe('');
     expect(typeof verifyOtp.body.tokens.accessToken).toBe('string');
     expect(typeof verifyOtp.body.tokens.refreshToken).toBe('string');
 
@@ -67,6 +69,37 @@ describe('Auth (e2e)', () => {
       .post('/api/v1/auth/refresh')
       .send({ refreshToken: refresh1.body.refreshToken });
     expect(refreshAfterLogout.status).toBe(401);
+  });
+
+  it('OTP verify links walk-in cards by phone', async () => {
+    const network = await prisma.network.create({ data: { name: 'N link', slug: 'n-link-wi' } });
+    const studio = await prisma.studio.create({
+      data: {
+        networkId: network.id,
+        name: 'S link',
+        address: 'a',
+        city: 'Moscow',
+        openingHours: {},
+      },
+    });
+    await prisma.walkInClient.create({
+      data: {
+        studioId: studio.id,
+        firstName: 'Walk',
+        lastName: 'In',
+        phone: '+79991112233',
+      },
+    });
+    const ro = await request(app.getHttpServer()).post('/api/v1/auth/otp/request').send({ phone: '+79991112233' });
+    expect(ro.status).toBe(201);
+    const v = await request(app.getHttpServer()).post('/api/v1/auth/otp/verify').send({
+      phone: '+79991112233',
+      code: ro.body.debugCode,
+      deviceType: 'mobile_ios',
+    });
+    expect(v.status).toBe(201);
+    const wi = await prisma.walkInClient.findFirst({ where: { phone: '+79991112233' } });
+    expect(wi?.linkedUserId).toBe(v.body.user.id);
   });
 
   it('staff login by email + password', async () => {

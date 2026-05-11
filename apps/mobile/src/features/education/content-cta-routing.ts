@@ -11,9 +11,8 @@ export type ContentCtaNavigationIntent =
   | { kind: 'unhandled'; target: ContentCtaTarget; reason: string };
 
 /**
- * Схема переходов: контент → запись / программа / товар / серия / квиз / внешняя ссылка.
- * Экраны программы и deep-link по товару дорабатываются по мере появления маршрутов;
- * для них возвращается best-effort маршрут с query-параметрами.
+ * Схема переходов: контент → запись / программа / карточка товара / серия / квиз / внешняя ссылка.
+ * Товар: `/(app)/product/[id]`; квиз из ленты: `/(app)/quiz` (авторизованный клиент).
  */
 export function resolveContentCtaNavigation(cta: ClientContentFeedCta): ContentCtaNavigationIntent {
   switch (cta.target) {
@@ -32,11 +31,10 @@ export function resolveContentCtaNavigation(cta: ClientContentFeedCta): ContentC
       }
       return {
         kind: 'expo-router',
-        pathname: '/(app)/(tabs)/products',
-        params: { highlightPhysicalGoodId: cta.targetPhysicalGoodId },
+        pathname: '/(app)/product/[id]',
+        params: { id: cta.targetPhysicalGoodId },
       };
     case ContentCtaTarget.Program:
-    case ContentCtaTarget.ProgramInquiry:
       if (!cta.targetProgramId) {
         return { kind: 'unhandled', target: cta.target, reason: 'missing_targetProgramId' };
       }
@@ -44,6 +42,15 @@ export function resolveContentCtaNavigation(cta: ClientContentFeedCta): ContentC
         kind: 'expo-router',
         pathname: '/(app)/(tabs)/education',
         params: { focusProgramId: cta.targetProgramId },
+      };
+    case ContentCtaTarget.ProgramInquiry:
+      if (!cta.targetProgramId) {
+        return { kind: 'unhandled', target: cta.target, reason: 'missing_targetProgramId' };
+      }
+      return {
+        kind: 'expo-router',
+        pathname: '/(app)/(tabs)/education',
+        params: { focusProgramId: cta.targetProgramId, programInquiry: '1' },
       };
     case ContentCtaTarget.ContentSeries:
       if (!cta.targetSeriesId) {
@@ -60,8 +67,8 @@ export function resolveContentCtaNavigation(cta: ClientContentFeedCta): ContentC
       }
       return {
         kind: 'expo-router',
-        pathname: '/(auth)/quiz',
-        params: { contentQuizId: cta.targetQuizId },
+        pathname: '/(app)/quiz',
+        params: { quizId: cta.targetQuizId },
       };
     case ContentCtaTarget.ExternalUrl:
       if (!cta.targetExternalUrl) {

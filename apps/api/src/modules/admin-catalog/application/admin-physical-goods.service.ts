@@ -1,5 +1,9 @@
 /* eslint-disable import/order */
+import { mkdir, writeFile } from 'node:fs/promises';
+import { extname, join } from 'node:path';
+
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -12,13 +16,23 @@ import { UserRole } from '@srs/shared-types';
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 import type { CreatePhysicalGoodCategoryDto } from '../presentation/dto/create-physical-good-category.dto';
-import type { CreatePhysicalGoodDto } from '../presentation/dto/create-physical-good.dto';
+import type {
+  CreatePhysicalGoodDto,
+  PhysicalGoodStudioInventoryDto,
+} from '../presentation/dto/create-physical-good.dto';
 import type { UpdatePhysicalGoodCategoryDto } from '../presentation/dto/update-physical-good-category.dto';
 import type { UpdatePhysicalGoodDto } from '../presentation/dto/update-physical-good.dto';
 
 function isUniqueViolation(e: unknown): e is Prisma.PrismaClientKnownRequestError {
   return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
 }
+
+type UploadedProductImageFile = {
+  originalname: string;
+  mimetype: string;
+  buffer: Buffer;
+  size: number;
+};
 
 @Injectable()
 export class AdminPhysicalGoodsService {
@@ -64,6 +78,81 @@ export class AdminPhysicalGoodsService {
     return next === '' ? null : next;
   }
 
+  private identifierFromName(name: string): string {
+    const translit: Record<string, string> = {
+      а: 'a',
+      б: 'b',
+      в: 'v',
+      г: 'g',
+      д: 'd',
+      е: 'e',
+      ё: 'e',
+      ж: 'zh',
+      з: 'z',
+      и: 'i',
+      й: 'y',
+      к: 'k',
+      л: 'l',
+      м: 'm',
+      н: 'n',
+      о: 'o',
+      п: 'p',
+      р: 'r',
+      с: 's',
+      т: 't',
+      у: 'u',
+      ф: 'f',
+      х: 'h',
+      ц: 'c',
+      ч: 'ch',
+      ш: 'sh',
+      щ: 'sch',
+      ъ: '',
+      ы: 'y',
+      ь: '',
+      э: 'e',
+      ю: 'yu',
+      я: 'ya',
+    };
+    const normalized = name
+      .trim()
+      .toLowerCase()
+      .split('')
+      .map((ch) => translit[ch] ?? ch)
+      .join('')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80);
+    return normalized || 'product';
+  }
+
+  private async uniqueSlug(raw: string | undefined, name: string, excludeId?: string): Promise<string> {
+    const base = this.identifierFromName(raw?.trim() || name);
+    for (let i = 0; i < 1000; i += 1) {
+      const candidate = i === 0 ? base : `${base}-${i + 1}`;
+      const existing = await this.prisma.physicalGood.findUnique({
+        where: { slug: candidate },
+        select: { id: true },
+      });
+      if (!existing || existing.id === excludeId) return candidate;
+    }
+    throw new ConflictException('Не удалось автоматически сформировать уникальный slug');
+  }
+
+  private async uniqueSku(raw: string | undefined, name: string, excludeId?: string): Promise<string> {
+    const slugBase = this.identifierFromName(raw?.trim() || name);
+    const base = slugBase.replace(/-/g, '_').toUpperCase().slice(0, 80) || 'PRODUCT';
+    for (let i = 0; i < 1000; i += 1) {
+      const candidate = i === 0 ? base : `${base}_${i + 1}`;
+      const existing = await this.prisma.physicalGood.findUnique({
+        where: { sku: candidate },
+        select: { id: true },
+      });
+      if (!existing || existing.id === excludeId) return candidate;
+    }
+    throw new ConflictException('Не удалось автоматически сформировать уникальный SKU');
+  }
+
   private async assertCategoryBelongsNetwork(networkId: string, categoryId: string): Promise<void> {
     const row = await this.prisma.physicalGoodCategory.findFirst({
       where: { id: categoryId, networkId },
@@ -72,6 +161,47 @@ export class AdminPhysicalGoodsService {
     if (!row) {
       throw new NotFoundException('Категория товара не найдена в этой сети');
     }
+  }
+
+  private async assertStudiosBelongNetwork(networkId: string, studioIds: string[]): Promise<void> {
+    if (studioIds.length === 0) return;
+    const count = await this.prisma.studio.count({
+      where: { id: { in: studioIds }, networkId },
+    });
+    if (count !== new Set(studioIds).size) {
+      throw new NotFoundException('Одна или несколько студий не найдены в этой сети');
+    }
+  }
+
+  private async saveStudioInventory(goodId: string, networkId: string, items: PhysicalGoodStudioInventoryDto[] | undefined) {
+    if (items === undefined) return;
+    const normalized = items.filter((item, index, all) => all.findIndex((x) => x.studioId === item.studioId) === index);
+    await this.assertStudiosBelongNetwork(networkId, normalized.map((item) => item.studioId));
+    await this.prisma.$transaction([
+      this.prisma.physicalGoodStudioInventory.deleteMany({
+        where: {
+          goodId,
+          studioId: { notIn: normalized.map((item) => item.studioId) },
+        },
+      }),
+      ...normalized.map((item) =>
+        this.prisma.physicalGoodStudioInventory.upsert({
+          where: { goodId_studioId: { goodId, studioId: item.studioId } },
+          create: {
+            goodId,
+            studioId: item.studioId,
+            isAvailable: item.isAvailable ?? true,
+            stock: item.stock ?? null,
+            priceMinor: item.priceRubles == null ? null : item.priceRubles * 100,
+          },
+          update: {
+            isAvailable: item.isAvailable ?? true,
+            stock: item.stock ?? null,
+            priceMinor: item.priceRubles == null ? null : item.priceRubles * 100,
+          },
+        }),
+      ),
+    ]);
   }
 
   // --- Categories ---
@@ -166,6 +296,12 @@ export class AdminPhysicalGoodsService {
         category: {
           select: { id: true, name: true, slug: true, isActive: true },
         },
+        studioInventory: {
+          include: {
+            studio: { select: { id: true, name: true } },
+          },
+          orderBy: { studio: { name: 'asc' } },
+        },
       },
     });
   }
@@ -178,6 +314,12 @@ export class AdminPhysicalGoodsService {
         category: {
           select: { id: true, name: true, slug: true, isActive: true },
         },
+        studioInventory: {
+          include: {
+            studio: { select: { id: true, name: true } },
+          },
+          orderBy: { studio: { name: 'asc' } },
+        },
       },
     });
     if (!row) {
@@ -189,14 +331,20 @@ export class AdminPhysicalGoodsService {
   async create(user: JwtAccessPayload, networkId: string, dto: CreatePhysicalGoodDto) {
     await this.assertCanAccessNetwork(user, networkId);
     await this.assertCategoryBelongsNetwork(networkId, dto.categoryId);
+    await this.assertStudiosBelongNetwork(networkId, (dto.studioInventory ?? []).map((item) => item.studioId));
+    const name = this.normalizeString(dto.name);
+    const [sku, slug] = await Promise.all([
+      this.uniqueSku(dto.sku, name),
+      this.uniqueSlug(dto.slug, name),
+    ]);
     try {
-      return await this.prisma.physicalGood.create({
+      const row = await this.prisma.physicalGood.create({
         data: {
           networkId,
           categoryId: dto.categoryId,
-          sku: this.normalizeString(dto.sku),
-          slug: this.normalizeString(dto.slug),
-          name: this.normalizeString(dto.name),
+          sku,
+          slug,
+          name,
           description: this.normalizeOptionalString(dto.description),
           brand: this.normalizeOptionalString(dto.brand),
           imageUrls: dto.imageUrls ?? [],
@@ -211,6 +359,8 @@ export class AdminPhysicalGoodsService {
           },
         },
       });
+      await this.saveStudioInventory(row.id, networkId, dto.studioInventory);
+      return this.getById(user, networkId, row.id);
     } catch (e) {
       if (isUniqueViolation(e)) {
         throw new ConflictException('Товар с таким SKU или slug уже существует');
@@ -224,6 +374,7 @@ export class AdminPhysicalGoodsService {
     if (dto.categoryId !== undefined) {
       await this.assertCategoryBelongsNetwork(networkId, dto.categoryId);
     }
+    await this.assertStudiosBelongNetwork(networkId, (dto.studioInventory ?? []).map((item) => item.studioId));
     const data: Prisma.PhysicalGoodUpdateInput = {};
     if (dto.sku !== undefined) data.sku = this.normalizeString(dto.sku);
     if (dto.slug !== undefined) data.slug = this.normalizeString(dto.slug);
@@ -238,7 +389,7 @@ export class AdminPhysicalGoodsService {
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
 
     try {
-      return await this.prisma.physicalGood.update({
+      await this.prisma.physicalGood.update({
         where: { id: goodId },
         data,
         include: {
@@ -247,6 +398,8 @@ export class AdminPhysicalGoodsService {
           },
         },
       });
+      await this.saveStudioInventory(goodId, networkId, dto.studioInventory);
+      return this.getById(user, networkId, goodId);
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
         throw new NotFoundException(`Товар ${goodId} не найден`);
@@ -262,5 +415,36 @@ export class AdminPhysicalGoodsService {
     await this.getById(user, networkId, goodId);
     await this.prisma.physicalGood.delete({ where: { id: goodId } });
     return { ok: true };
+  }
+
+  async saveImage(
+    user: JwtAccessPayload,
+    networkId: string,
+    file: UploadedProductImageFile | undefined,
+    publicBaseUrl: string,
+  ) {
+    await this.assertCanAccessNetwork(user, networkId);
+    if (!file) {
+      throw new BadRequestException('Файл изображения обязателен');
+    }
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('Можно загрузить только изображение');
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      throw new BadRequestException('Изображение должно быть не больше 5 МБ');
+    }
+
+    const ext = extname(file.originalname).toLowerCase() || '.jpg';
+    const safeExt = ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext) ? ext : '.jpg';
+    const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${safeExt}`;
+    const relativePath = `products/${networkId}/${filename}`;
+    const uploadsRoot = join(process.cwd(), 'uploads');
+    const targetDir = join(uploadsRoot, 'products', networkId);
+    await mkdir(targetDir, { recursive: true });
+    await writeFile(join(targetDir, filename), file.buffer);
+
+    return {
+      url: `${publicBaseUrl.replace(/\/$/, '')}/uploads/${relativePath}`,
+    };
   }
 }

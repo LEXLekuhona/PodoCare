@@ -6,6 +6,8 @@ import { ApiError, apiRequest } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { canManageStaff, canMutateTenantCatalog } from '../../lib/roles';
+import { DeleteIcon } from '../../ui/DeleteIcon';
+import EditIcon from '../../ui/EditIcon';
 import { FilterBar } from '../../ui/FilterBar';
 
 import type { FormEvent } from 'react';
@@ -106,26 +108,6 @@ function ScheduleIcon() {
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <rect x="4" y="5" width="16" height="15" rx="2" strokeWidth="1.8" />
       <path d="M8 3v4M16 3v4M4 10h16" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function EditIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M4 20h4l10-10-4-4L4 16v4Z" strokeWidth="1.8" />
-      <path d="m12 6 4 4" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function DeleteIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M4 7h16" strokeWidth="1.8" />
-      <path d="M9 7V4h6v3" strokeWidth="1.8" />
-      <path d="M7 7l1 13h8l1-13" strokeWidth="1.8" />
-      <path d="M10 11v6M14 11v6" strokeWidth="1.8" />
     </svg>
   );
 }
@@ -543,7 +525,7 @@ export function SpecialistsPage() {
   async function removeRow(row: SpecialistRow) {
     if (
       !globalThis.confirm(
-        `Деактивировать специалиста «${row.lastName} ${row.firstName}»? Вход в систему будет отключён.`,
+        `Удалить специалиста «${row.lastName} ${row.firstName}»? Учётная запись и профиль будут удалены безвозвратно.`,
       )
     ) {
       return;
@@ -1042,7 +1024,7 @@ export function SpecialistsPage() {
         resetDisabled={searchQuery.trim() === '' && studioFilterId.trim() === ''}
         foundCount={filteredRows.length}
         totalCount={rows.length}
-        placeholder="ФИО, студия, специализация, email, телефон"
+        placeholder="Поиск..."
       >
         {canFilterByStudio ? (
           <div className="field" style={{ minWidth: 260, maxWidth: 380 }}>
@@ -1887,8 +1869,14 @@ export function SpecialistsPage() {
                                   {shiftStatusLabel(r.status)}
                                 </span>
                                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                                  <button type="button" onClick={() => void startEditShift(r)}>
-                                    Изменить
+                                  <button
+                                    type="button"
+                                    className="action-icon-btn"
+                                    aria-label="Изменить смену"
+                                    title="Изменить"
+                                    onClick={() => void startEditShift(r)}
+                                  >
+                                    <EditIcon />
                                   </button>
                                   <button type="button" className="danger" onClick={() => void removeShift(r.id)}>
                                     Отменить

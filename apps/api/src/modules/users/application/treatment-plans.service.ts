@@ -5,6 +5,7 @@ import { UserRole } from '@srs/shared-types';
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
+import type { NotificationsService } from '../../notifications/application/notifications.service';
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 import type { CreateTreatmentPlanDto } from '../presentation/dto/create-treatment-plan.dto';
 import type { TreatmentPlanStepInputDto } from '../presentation/dto/treatment-plan-step.dto';
@@ -12,7 +13,10 @@ import type { UpdateTreatmentPlanDto } from '../presentation/dto/update-treatmen
 
 @Injectable()
 export class TreatmentPlansService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   async createForClient(clientId: string, actor: JwtAccessPayload, dto: CreateTreatmentPlanDto) {
     const client = await this.prisma.user.findUnique({
@@ -68,6 +72,15 @@ export class TreatmentPlansService {
       });
       return plan;
     });
+    if (nowStatus === TreatmentPlanStatus.ACTIVE) {
+      await this.notificationsService.notifyClientTreatmentPlan({
+        clientUserId: client.id,
+        planId: created.id,
+        studioId,
+        planTitle: created.title,
+        dedupeSuffix: 'created',
+      });
+    }
     return this.mapPlan(created, false);
   }
 
@@ -134,6 +147,16 @@ export class TreatmentPlansService {
       });
       return next;
     });
+
+    if (updated.status === TreatmentPlanStatus.ACTIVE) {
+      await this.notificationsService.notifyClientTreatmentPlan({
+        clientUserId: clientId,
+        planId: updated.id,
+        studioId: updated.studioId,
+        planTitle: updated.title,
+        dedupeSuffix: `updated-${updated.updatedAt.getTime()}`,
+      });
+    }
 
     return this.mapPlan(updated, false);
   }

@@ -1,3 +1,4 @@
+import { OrderStatus, ProductType } from '@prisma/client';
 import { ContentAudience, ContentFormat, UserRole } from '@srs/shared-types';
 import argon2 from 'argon2';
 import request from 'supertest';
@@ -218,6 +219,23 @@ describe('Content Funnel (e2e)', () => {
       }),
     );
 
+    const itemDetail = await request(app.getHttpServer())
+      .get(`/api/v1/client/content/items/${createItem.body.id}`)
+      .set('Authorization', `Bearer ${clientToken}`);
+    expect(itemDetail.status).toBe(200);
+    expect(itemDetail.body).toEqual(
+      expect.objectContaining({
+        id: createItem.body.id,
+        title: 'Видео: базовый уход',
+        format: 'VIDEO',
+        seriesId: createSeries.body.id,
+        seriesTitle: 'Серия по уходу',
+        body: { videoUrl: 'https://example.com/video.mp4' },
+        paywall: expect.objectContaining({ mode: 'FREE', isLocked: false }),
+        ctas: [expect.objectContaining({ id: ctaId, target: 'EXTERNAL_URL' })],
+      }),
+    );
+
     const saveProgress = await request(app.getHttpServer())
       .post(`/api/v1/client/content/items/${createItem.body.id}/progress`)
       .set('Authorization', `Bearer ${clientToken}`)
@@ -318,6 +336,12 @@ describe('Content Funnel (e2e)', () => {
     const unauthorized = await request(app.getHttpServer()).get('/api/v1/client/content/feed');
     expect(unauthorized.status).toBe(401);
 
+    const someUuid = '00000000-0000-4000-8000-000000000000';
+    const itemDetailUnauthorized = await request(app.getHttpServer()).get(
+      `/api/v1/client/content/items/${someUuid}`,
+    );
+    expect(itemDetailUnauthorized.status).toBe(401);
+
     const authorToken = await loginStaff(app, author.email!, authorPassword);
     const { token: clientToken } = await loginClientByOtp(app, client.phone);
 
@@ -335,5 +359,164 @@ describe('Content Funnel (e2e)', () => {
       .get('/api/v1/client/content/feed')
       .set('Authorization', `Bearer ${authorToken}`);
     expect(authorToClient.status).toBe(403);
+
+    const authorToItemDetail = await request(app.getHttpServer())
+      .get(`/api/v1/client/content/items/${someUuid}`)
+      .set('Authorization', `Bearer ${authorToken}`);
+    expect(authorToItemDetail.status).toBe(403);
+  });
+
+  it('paid series: feed marks locked item, progress/cta forbidden until order paid', async () => {
+    const network = await prisma.network.create({
+      data: { name: 'Net Paid', slug: 'net-paid' },
+    });
+    const studio = await prisma.studio.create({
+      data: {
+        networkId: network.id,
+        name: 'Studio Paid',
+        address: 'ул. Платная, 1',
+        city: 'Москва',
+        openingHours: {},
+        phone: '+79990000020',
+      },
+    });
+    const authorPassword = 'StrongPass123!';
+    const author = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.ContentAuthor,
+        phone: '+79990000021',
+        email: 'author-paid@solodova-recovery.local',
+        passwordHash: await argon2.hash(authorPassword),
+        firstName: 'Автор',
+        lastName: 'Платный',
+      },
+    });
+    const client = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.Client,
+        phone: '+79990000022',
+        firstName: 'Клиент',
+        lastName: 'Платный',
+      },
+    });
+
+    const authorToken = await loginStaff(app, author.email!, authorPassword);
+    const { token: clientToken } = await loginClientByOtp(app, client.phone);
+
+    const createSeries = await request(app.getHttpServer())
+      .post('/api/v1/content/series')
+      .set('Authorization', `Bearer ${authorToken}`)
+      .send({
+        networkId: network.id,
+        title: 'Платная серия',
+        audience: ContentAudience.Client,
+        priceMinor: 49_900,
+        status: 'published',
+      });
+    expect(createSeries.status).toBe(201);
+
+    const createItem = await request(app.getHttpServer())
+      .post('/api/v1/content/items')
+      .set('Authorization', `Bearer ${authorToken}`)
+      .send({
+        networkId: network.id,
+        seriesId: createSeries.body.id,
+        title: 'Урок 1',
+        format: ContentFormat.Video,
+        audience: ContentAudience.Client,
+        body: { videoUrl: 'https://example.com/paid.mp4' },
+        isFreePreview: false,
+        status: 'published',
+      });
+    expect(createItem.status).toBe(201);
+
+    const createCta = await request(app.getHttpServer())
+      .post(`/api/v1/content/items/${createItem.body.id}/cta`)
+      .set('Authorization', `Bearer ${authorToken}`)
+      .send({
+        target: 'EXTERNAL_URL',
+        label: 'Купить',
+        targetExternalUrl: 'https://example.com/checkout',
+      });
+    expect(createCta.status).toBe(201);
+    const ctaId = createCta.body.id as string;
+
+    const publish = await request(app.getHttpServer())
+      .post(`/api/v1/content/items/${createItem.body.id}/publish`)
+      .set('Authorization', `Bearer ${authorToken}`);
+    expect(publish.status).toBe(201);
+
+    const feedBefore = await request(app.getHttpServer())
+      .get('/api/v1/client/content/feed')
+      .set('Authorization', `Bearer ${clientToken}`);
+    expect(feedBefore.status).toBe(200);
+    const feedItem = feedBefore.body.items.find((x: { id: string }) => x.id === createItem.body.id);
+    expect(feedItem?.paywall).toMatchObject({
+      mode: 'PAID',
+      isLocked: true,
+      priceMinor: 49_900,
+    });
+
+    const progressDenied = await request(app.getHttpServer())
+      .post(`/api/v1/client/content/items/${createItem.body.id}/progress`)
+      .set('Authorization', `Bearer ${clientToken}`)
+      .send({ percent: 10 });
+    expect(progressDenied.status).toBe(403);
+
+    const ctaDenied = await request(app.getHttpServer())
+      .post(`/api/v1/client/content/items/${createItem.body.id}/cta/${ctaId}/click`)
+      .set('Authorization', `Bearer ${clientToken}`)
+      .send({});
+    expect(ctaDenied.status).toBe(403);
+
+    const detailDenied = await request(app.getHttpServer())
+      .get(`/api/v1/client/content/items/${createItem.body.id}`)
+      .set('Authorization', `Bearer ${clientToken}`);
+    expect(detailDenied.status).toBe(403);
+
+    await prisma.order.create({
+      data: {
+        userId: client.id,
+        studioId: studio.id,
+        orderNumber: `ORD-PAID-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        status: OrderStatus.PAID,
+        subtotalMinor: 49_900,
+        totalMinor: 49_900,
+        items: {
+          create: {
+            productType: ProductType.DIGITAL_CONTENT,
+            contentSeriesId: createSeries.body.id,
+            nameSnapshot: 'Платная серия',
+            quantity: 1,
+            unitPriceMinor: 49_900,
+            totalMinor: 49_900,
+          },
+        },
+      },
+    });
+
+    const feedAfter = await request(app.getHttpServer())
+      .get('/api/v1/client/content/feed')
+      .set('Authorization', `Bearer ${clientToken}`);
+    expect(feedAfter.status).toBe(200);
+    const feedItemUnlocked = feedAfter.body.items.find((x: { id: string }) => x.id === createItem.body.id);
+    expect(feedItemUnlocked?.paywall?.isLocked).toBe(false);
+
+    const progressOk = await request(app.getHttpServer())
+      .post(`/api/v1/client/content/items/${createItem.body.id}/progress`)
+      .set('Authorization', `Bearer ${clientToken}`)
+      .send({ percent: 50 });
+    expect(progressOk.status).toBe(201);
+
+    const detailOk = await request(app.getHttpServer())
+      .get(`/api/v1/client/content/items/${createItem.body.id}`)
+      .set('Authorization', `Bearer ${clientToken}`);
+    expect(detailOk.status).toBe(200);
+    expect(detailOk.body.body).toEqual({ videoUrl: 'https://example.com/paid.mp4' });
+    expect(detailOk.body.paywall).toEqual(
+      expect.objectContaining({ mode: 'PAID', isLocked: false, priceMinor: 49_900 }),
+    );
   });
 });

@@ -23,22 +23,32 @@ export type QuizDto = {
   questions: QuizQuestionDto[];
 };
 
+export type QuizRecommendedCtaDto = {
+  label: string | null;
+  target: string | null;
+  targetProgramId: string | null;
+  targetSeriesId: string | null;
+  targetServiceId: string | null;
+  targetPhysicalGoodId: string | null;
+  targetQuizId: string | null;
+  targetExternalUrl: string | null;
+};
+
 export type QuizResultDto = {
   segment: string;
   score: number;
   title: string | null;
   description: string | null;
-  recommendedCta:
-    | {
-        label: string | null;
-        target: string | null;
-      }
-    | null;
+  recommendedCta: QuizRecommendedCtaDto | null;
   recommendedContent: string[];
 };
 
 export async function fetchActiveQuiz(): Promise<QuizDto> {
   return apiFetchJson<QuizDto>('/quiz/active');
+}
+
+export async function fetchPublishedQuiz(quizId: string): Promise<QuizDto> {
+  return apiFetchJson<QuizDto>(`/quiz/published/${quizId}`);
 }
 
 export async function createQuizSession(input: { quizId: string; anonToken: string }) {
@@ -85,4 +95,17 @@ export async function mergeQuizSessionWithUser(sessionId: string): Promise<void>
       Accept: 'application/json',
     },
   });
+}
+
+/** Несколько попыток merge после завершения квиза (сеть / гонка с refresh). */
+export async function mergeQuizSessionWithUserReliable(sessionId: string, attempts = 3): Promise<boolean> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await mergeQuizSessionWithUser(sessionId);
+      return true;
+    } catch {
+      await new Promise((r) => setTimeout(r, 350 * (i + 1)));
+    }
+  }
+  return false;
 }

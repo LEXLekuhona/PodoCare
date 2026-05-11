@@ -41,6 +41,18 @@ export class AdminStudioServicesService {
     if (user.role === UserRole.StudioAdmin) {
       const my = await this.getStudioAdminStudioId(user.sub);
       if (my !== studioId) throw new ForbiddenException();
+    } else if (user.role === UserRole.Specialist) {
+      const profile = await this.prisma.specialistProfile.findUnique({
+        where: { userId: user.sub },
+        select: {
+          studioId: true,
+          studios: { select: { studioId: true } },
+        },
+      });
+      if (!profile) throw new ForbiddenException();
+      const allowed =
+        profile.studioId === studioId || profile.studios.some((item) => item.studioId === studioId);
+      if (!allowed) throw new ForbiddenException();
     } else if (user.role !== UserRole.SuperAdmin && user.role !== UserRole.NetworkOwner) {
       throw new ForbiddenException();
     }

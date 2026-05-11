@@ -4,7 +4,12 @@ jest.mock('@/shared/config/env', () => ({
   getApiBaseUrl: () => 'http://example.test/api/v1',
 }));
 
+jest.mock('@/shared/network/connectivity', () => ({
+  fetchIsOffline: jest.fn(async () => false),
+}));
+
 import { ApiError, apiFetchJson } from './client';
+import { USER_SERVER_NO_CACHED_DATA } from './user-facing-errors';
 
 function mockResponse(params: {
   ok: boolean;
@@ -58,7 +63,7 @@ describe('apiFetchJson', () => {
       mockResponse({ ok: false, status: 500, bodyText: 'boom', headers: { 'content-type': 'text/plain' } }),
     ) as unknown as typeof fetch;
 
-    await expect(apiFetchJson('/x')).rejects.toMatchObject({ status: 500, message: 'boom' });
+    await expect(apiFetchJson('/x')).rejects.toMatchObject({ status: 500, message: USER_SERVER_NO_CACHED_DATA });
   });
 
   it('for non-ok prefers payload.message from JSON', async () => {

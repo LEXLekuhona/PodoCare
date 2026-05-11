@@ -20,8 +20,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Text, View } from '@/components/Themed';
-import { getMe, patchMe } from '@/features/user/me-api';
+import { getMe, patchMe, uploadMyAvatar } from '@/features/user/me-api';
+import { loadProfileSnapshot } from '@/features/offline/profile-screen-cache';
 import { ApiError } from '@/shared/api/api-error';
+import { USER_OFFLINE_NO_CACHED_DATA } from '@/shared/api/user-facing-errors';
+import { fetchIsOffline } from '@/shared/network/connectivity';
 import { isoDateToDdMmYyyy, maskRuBirthDateInput, parseDdMmYyyyToIso } from '@/shared/lib/birth-date-ru';
 import { formatRuPhoneDisplay } from '@/shared/lib/phone';
 import { isValidRuPersonName, normalizeRuPersonName } from '@/shared/lib/ru-person-name';
@@ -51,6 +54,21 @@ export default function ProfileEditScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      if (await fetchIsOffline()) {
+        const snap = await loadProfileSnapshot();
+        if (!snap) {
+          Alert.alert('Ошибка', USER_OFFLINE_NO_CACHED_DATA);
+          return;
+        }
+        setFirstName(snap.firstName ?? '');
+        setLastName(snap.lastName ?? '');
+        setEmail(snap.email ?? '');
+        setPhoneDisplay(formatRuPhoneDisplay(snap.phone));
+        setBirthIsoLoaded(snap.birthDate);
+        setBirthDisplay(snap.birthDate ? isoDateToDdMmYyyy(snap.birthDate) : '');
+        setAvatarUri(snap.avatarUrl ?? null);
+        return;
+      }
       const me = await getMe();
       setFirstName(me.firstName ?? '');
       setLastName(me.lastName ?? '');
@@ -160,14 +178,16 @@ export default function ProfileEditScreen() {
       const manipulated = await manipulateAsync(uri, [{ resize: { width: 512 } }], {
         compress: 0.82,
         format: SaveFormat.JPEG,
-        base64: true,
       });
-      if (!manipulated.base64) {
+      if (!manipulated.uri) {
         Alert.alert('Ошибка', 'Не удалось обработать изображение.');
         return;
       }
-      const dataUrl = `data:image/jpeg;base64,${manipulated.base64}`;
-      const updated = await patchMe({ avatarUrl: dataUrl });
+      const updated = await uploadMyAvatar({
+        uri: manipulated.uri,
+        name: 'avatar.jpg',
+        type: 'image/jpeg',
+      });
       setAvatarUri(updated.avatarUrl ?? null);
     } catch (e: unknown) {
       const message = e instanceof ApiError ? e.message : 'Не удалось сохранить фото';
@@ -249,26 +269,29 @@ export default function ProfileEditScreen() {
               <View style={styles.card} lightColor="#FFFFFF" darkColor="#0C1A14">
                 <RNView style={styles.avatarBlock}>
                   <RNView style={styles.avatarCircleWrap}>
-                    <View style={styles.avatarCircle} lightColor="#EEF1EE" darkColor="rgba(255,255,255,0.08)">
-                      {avatarUri ? (
-                        <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
-                      ) : (
-                        <FontAwesome name="user" size={44} color="rgba(112,121,115,1)" />
-                      )}
-                      {avatarBusy ? (
-                        <RNView style={styles.avatarBusyOverlay}>
-                          <ActivityIndicator color="#FFFFFF" />
+                    <Pressable
+                      onPress={openAvatarOptions}
+                      disabled={avatarBusy}
+                      accessibilityRole="button"
+                      accessibilityLabel="Изменить фото"
+                      style={({ pressed }) => [styles.avatarCirclePressable, pressed && styles.pressed]}
+                    >
+                      <View style={styles.avatarCircle} lightColor="#EEF1EE" darkColor="rgba(255,255,255,0.08)">
+                        {avatarUri ? (
+                          <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+                        ) : (
+                          <FontAwesome name="user" size={44} color="rgba(112,121,115,1)" />
+                        )}
+                        {avatarBusy ? (
+                          <RNView style={styles.avatarBusyOverlay}>
+                            <ActivityIndicator color="#FFFFFF" />
+                          </RNView>
+                        ) : null}
+                        <RNView style={styles.avatarFab} pointerEvents="none">
+                          <FontAwesome name="pencil" size={14} color="#FFFFFF" />
                         </RNView>
-                      ) : null}
-                      <Pressable
-                        style={({ pressed }) => [styles.avatarFab, pressed && styles.pressed]}
-                        onPress={openAvatarOptions}
-                        disabled={avatarBusy}
-                        accessibilityLabel="Изменить фото"
-                      >
-                        <FontAwesome name="pencil" size={14} color="#FFFFFF" />
-                      </Pressable>
-                    </View>
+                      </View>
+                    </Pressable>
                   </RNView>
                   <Pressable onPress={openAvatarOptions} disabled={avatarBusy}>
                     <Text style={styles.changePhoto} lightColor={GREEN} darkColor="#95D4B3">
@@ -457,6 +480,9 @@ const styles = StyleSheet.create({
   avatarCircleWrap: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarCirclePressable: {
+    borderRadius: 52,
   },
   avatarCircle: {
     width: 104,

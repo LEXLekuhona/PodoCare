@@ -1,0 +1,302 @@
+{
+  "meta": {
+    "title": "Основной прайс услуг студии",
+    "sourceFile": "Прайс17.03.docx",
+    "effectiveDate": "2025-03-17",
+    "notes": "Цены в рублях из прайс-листа; в БД хранятся в копейках (price_minor). Для позиций «от …» в seed записывается минимальная сумма, формулировка «от» сохранена в описании."
+  },
+  "items": [
+    {
+      "name": "Консультация, осмотр оrстеопрактика (до 30 мин.)",
+      "durationMinutes": 30,
+      "priceRub": 3000,
+      "categorySlug": "diagnostics"
+    },
+    {
+      "name": "Консультация, осмотр подолога: детская, стопы и руки (до 30 мин.)",
+      "durationMinutes": 30,
+      "priceRub": 2500,
+      "categorySlug": "diagnostics"
+    },
+    {
+      "name": "Консультация, осмотр подолога: полная, стопы и руки (до 30 мин.)",
+      "durationMinutes": 30,
+      "priceRub": 5000,
+      "categorySlug": "diagnostics"
+    },
+    {
+      "name": "Консультация, осмотр подолога: ногтевые пластины, стопы и руки (до 30 мин.)",
+      "durationMinutes": 30,
+      "priceRub": 3000,
+      "categorySlug": "diagnostics"
+    },
+    {
+      "name": "Консультация, осмотр подолога: бородавки (до 30 мин.)",
+      "durationMinutes": 30,
+      "priceRub": 2500,
+      "categorySlug": "diagnostics"
+    },
+    {
+      "name": "Консультация онлайн интегративного натуропата по ЧЕКап организма (до 30 мин.)",
+      "durationMinutes": 30,
+      "priceRub": 3000,
+      "categorySlug": "diagnostics"
+    },
+    {
+      "name": "Работа с бородавками (1 локация)",
+      "durationMinutes": 45,
+      "priceRub": 4500,
+      "categorySlug": "podology"
+    },
+    {
+      "name": "Работа с бородавками: 6-й и последующие приёмы (1 локация), от …",
+      "description": "По прайсу: с 6-го приёма от 500 до 1000 ₽ за локацию. В системе указана минимальная стоимость 500 ₽.",
+      "durationMinutes": 30,
+      "priceRub": 500,
+      "categorySlug": "podology"
+    },
+    {
+      "name": "Вросший ноготь, 1 степень (от …)",
+      "description": "Минимальная стоимость по прайсу: от 6500 ₽.",
+      "durationMinutes": 60,
+      "priceRub": 6500,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Вросший ноготь, 2 степень (от …)",
+      "description": "Минимальная стоимость по прайсу: от 8500 ₽.",
+      "durationMinutes": 75,
+      "priceRub": 8500,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Вросший ноготь, 3 степень (от …)",
+      "description": "Минимальная стоимость по прайсу: от 10500 ₽.",
+      "durationMinutes": 90,
+      "priceRub": 10500,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Повторная обработка вросшего ногтя (от …)",
+      "description": "Минимальная стоимость по прайсу: от 1500 ₽.",
+      "durationMinutes": 30,
+      "priceRub": 1500,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Сеанс остеопрактика взрослый (1,5 ч.)",
+      "durationMinutes": 90,
+      "priceRub": 10000,
+      "categorySlug": "rehabilitation"
+    },
+    {
+      "name": "Сеанс остеопрактика ребёнок (до 1 ч.)",
+      "durationMinutes": 60,
+      "priceRub": 7000,
+      "categorySlug": "rehabilitation"
+    },
+    {
+      "name": "Висцеральный массаж (1 ч.)",
+      "durationMinutes": 60,
+      "priceRub": 6000,
+      "categorySlug": "rehabilitation"
+    },
+    {
+      "name": "Миофасциальный массаж лица (30 мин.)",
+      "durationMinutes": 30,
+      "priceRub": 3000,
+      "categorySlug": "rehabilitation"
+    },
+    {
+      "name": "Массаж «Лёгкие ножки и ручки» (1 ч.)",
+      "durationMinutes": 60,
+      "priceRub": 7000,
+      "categorySlug": "rehabilitation"
+    },
+    {
+      "name": "Сеанс восстановления после травм и операционных вмешательств (1,5 ч.)",
+      "durationMinutes": 90,
+      "priceRub": 10000,
+      "categorySlug": "rehabilitation"
+    },
+    {
+      "name": "Гигиенический (парамедицинский) аппаратный педикюр",
+      "durationMinutes": 60,
+      "priceRub": 6000,
+      "categorySlug": "podology"
+    },
+    {
+      "name": "Гигиенический аппаратный педикюр: обработка проблемных стоп, 1 степень",
+      "durationMinutes": 75,
+      "priceRub": 7000,
+      "categorySlug": "podology"
+    },
+    {
+      "name": "Гигиенический аппаратный педикюр: обработка проблемных стоп, 2 степень",
+      "durationMinutes": 90,
+      "priceRub": 8000,
+      "categorySlug": "podology"
+    },
+    {
+      "name": "Гигиенический аппаратный педикюр: обработка проблемных стоп, 3 степень",
+      "durationMinutes": 105,
+      "priceRub": 9500,
+      "categorySlug": "podology"
+    },
+    {
+      "name": "Гигиенический аппаратный педикюр: обработка пальцев",
+      "durationMinutes": 45,
+      "priceRub": 3500,
+      "categorySlug": "podology"
+    },
+    {
+      "name": "Гигиенический аппаратный педикюр: обработка пальцев с натоптышами",
+      "durationMinutes": 50,
+      "priceRub": 4000,
+      "categorySlug": "podology"
+    },
+    {
+      "name": "Забор материала на исследование (при грибке)",
+      "durationMinutes": 15,
+      "priceRub": 1000,
+      "categorySlug": "diagnostics"
+    },
+    {
+      "name": "Механическая чистка при грибке: 1 пластина большого пальца стопы",
+      "durationMinutes": 30,
+      "priceRub": 2000,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Механическая чистка при грибке: 1 пластина малого пальца стопы или руки (от …)",
+      "description": "По прайсу: от 1000 ₽.",
+      "durationMinutes": 30,
+      "priceRub": 1000,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Механическая чистка при онихолизисе: 1 пластина большого пальца стопы",
+      "durationMinutes": 30,
+      "priceRub": 2000,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Механическая чистка при онихолизисе: 1 пластина малого пальца стопы или руки (от …)",
+      "description": "По прайсу: от 1000 ₽.",
+      "durationMinutes": 30,
+      "priceRub": 1000,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Стержневая мозоль (от …)",
+      "description": "Стоимость по прайсу зависит от глубины и диаметра; минимум от 2000 ₽.",
+      "durationMinutes": 45,
+      "priceRub": 2000,
+      "categorySlug": "podology"
+    },
+    {
+      "name": "Твёрдая сухая мозоль",
+      "durationMinutes": 30,
+      "priceRub": 1500,
+      "categorySlug": "podology"
+    },
+    {
+      "name": "Разгрузки (от …)",
+      "description": "Минимальная стоимость по прайсу: от 1000 ₽.",
+      "durationMinutes": 30,
+      "priceRub": 1000,
+      "categorySlug": "foot-orthopedics"
+    },
+    {
+      "name": "Силиконовые ортезы (от …)",
+      "description": "Минимальная стоимость по прайсу: от 1500 ₽.",
+      "durationMinutes": 45,
+      "priceRub": 1500,
+      "categorySlug": "foot-orthopedics"
+    },
+    {
+      "name": "Тампонада",
+      "durationMinutes": 15,
+      "priceRub": 300,
+      "categorySlug": "podology"
+    },
+    {
+      "name": "Снятие гель-лака",
+      "durationMinutes": 30,
+      "priceRub": 1000,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Нитиловая (титановая) нить: первичная установка, 1 большой палец",
+      "durationMinutes": 90,
+      "priceRub": 8000,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Нитиловая (титановая) нить: коррекция, 1 большой палец",
+      "durationMinutes": 75,
+      "priceRub": 7000,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Нитиловая (титановая) нить: первичная установка, 1 малый палец",
+      "durationMinutes": 75,
+      "priceRub": 7000,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Нитиловая (титановая) нить: коррекция, 1 малый палец",
+      "durationMinutes": 60,
+      "priceRub": 6000,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Скоба Unibrace: первичная установка, 1 большой палец",
+      "durationMinutes": 90,
+      "priceRub": 10500,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Скоба Unibrace: коррекция, 1 большой палец",
+      "durationMinutes": 75,
+      "priceRub": 10000,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Скоба Unibrace: первичная установка, 1 малый палец",
+      "durationMinutes": 75,
+      "priceRub": 9500,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Скоба Unibrace: коррекция, 1 малый палец",
+      "durationMinutes": 60,
+      "priceRub": 9000,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Закрепитель: 1 большой палец",
+      "durationMinutes": 60,
+      "priceRub": 8000,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Закрепитель: 1 малый палец",
+      "durationMinutes": 45,
+      "priceRub": 7000,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Протезирование 1 ногтевой пластины (специальная масса)",
+      "durationMinutes": 60,
+      "priceRub": 2500,
+      "categorySlug": "onychology"
+    },
+    {
+      "name": "Снятие специальной массы с 1 ногтевой пластины",
+      "durationMinutes": 30,
+      "priceRub": 500,
+      "categorySlug": "onychology"
+    }
+  ]
+}

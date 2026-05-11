@@ -11,7 +11,10 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+
+import { PhysicalGoodStudioInventoryDto } from './create-physical-good.dto';
 
 export class UpdatePhysicalGoodDto {
   @ApiPropertyOptional()
@@ -85,4 +88,11 @@ export class UpdatePhysicalGoodDto {
   @IsBoolean()
   @Type(() => Boolean)
   isActive?: boolean;
+
+  @ApiPropertyOptional({ type: () => [PhysicalGoodStudioInventoryDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PhysicalGoodStudioInventoryDto)
+  studioInventory?: PhysicalGoodStudioInventoryDto[];
 }

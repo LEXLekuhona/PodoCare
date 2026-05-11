@@ -70,6 +70,18 @@ export const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => v !== 'false'),
+
+  YOOKASSA_SHOP_ID: z.string().optional(),
+  YOOKASSA_SECRET_KEY: z.string().optional(),
+  YOOKASSA_RETURN_URL: z.string().optional(),
+
+  /** Терминальный ключ из личного кабинета Т‑Банк (Эквайринг). */
+  TINKOFF_TERMINAL_KEY: z.string().optional(),
+  TINKOFF_PASSWORD: z.string().optional(),
+  /** Публичный URL API для уведомлений (например https://api.example.com/api/v1/webhooks/tinkoff). */
+  TINKOFF_NOTIFICATION_URL: z.string().optional(),
+  /** Опционально: строка JSON для поля DATA (привязка к терминалу и т.п.). */
+  TINKOFF_TERMINAL_DATA_JSON: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

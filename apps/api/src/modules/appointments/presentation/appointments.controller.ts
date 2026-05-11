@@ -23,14 +23,16 @@ import { RolesGuard } from '../../auth/infrastructure/roles.guard'
 import { AppointmentsService } from '../application/appointments.service'
 // Nest ValidationPipe relies on runtime metadata for DTO classes.
 // `import type` breaks `design:paramtypes`, causing whitelist validation to reject all properties.
-import { BookingSlotsQueryDto } from './dto/booking-slots-query.dto'
-import { CancelByClientDto } from './dto/cancel-by-client.dto'
-import { CancelByStudioDto } from './dto/cancel-by-studio.dto'
-import { CreateAppointmentProtocolDto } from './dto/create-appointment-protocol.dto'
-import { CreateAppointmentDto } from './dto/create-appointment.dto'
-import { ListAppointmentsQueryDto } from './dto/list-appointments-query.dto'
-import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto'
-import { UpdateAppointmentProtocolDto } from './dto/update-appointment-protocol.dto'
+import type { BookingSlotsQueryDto } from './dto/booking-slots-query.dto'
+import type { CancelByClientDto } from './dto/cancel-by-client.dto'
+import type { CancelByStudioDto } from './dto/cancel-by-studio.dto'
+import type { CreateAppointmentProtocolDto } from './dto/create-appointment-protocol.dto'
+import type { CreateAppointmentDto } from './dto/create-appointment.dto'
+import type { CreateWalkInClientDto } from './dto/create-walk-in-client.dto'
+import type { ListAppointmentsQueryDto } from './dto/list-appointments-query.dto'
+import type { SearchWalkInClientsQueryDto } from './dto/search-walk-in-clients.query.dto'
+import type { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto'
+import type { UpdateAppointmentProtocolDto } from './dto/update-appointment-protocol.dto'
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy'
 
 @ApiTags('appointments')
@@ -66,6 +68,20 @@ export class AppointmentsController {
     return this.appointmentsService.bookingSlots(query);
   }
 
+  @Get('walk-in-clients')
+  @Roles(UserRole.Specialist, UserRole.StudioAdmin, UserRole.NetworkOwner, UserRole.SuperAdmin)
+  @ApiOperation({ summary: 'Поиск walk-in клиентов студии по телефону или ФИО.' })
+  searchWalkInClients(@Query() query: SearchWalkInClientsQueryDto, @CurrentUser() user: JwtAccessPayload) {
+    return this.appointmentsService.searchWalkInClients(user, query.studioId, query.q);
+  }
+
+  @Post('walk-in-clients')
+  @Roles(UserRole.Specialist, UserRole.StudioAdmin, UserRole.NetworkOwner, UserRole.SuperAdmin)
+  @ApiOperation({ summary: 'Создать карточку клиента без приложения (walk-in).' })
+  createWalkInClient(@Body() body: CreateWalkInClientDto, @CurrentUser() user: JwtAccessPayload) {
+    return this.appointmentsService.createWalkInClient(user, body);
+  }
+
   @Post()
   @Roles(
     UserRole.Client,
@@ -88,14 +104,14 @@ export class AppointmentsController {
         clientUserId: user.sub,
       });
     }
-    return this.appointmentsService.create(body);
+    return this.appointmentsService.create(body, user);
   }
 
   @Get()
   @Roles(UserRole.Specialist, UserRole.StudioAdmin, UserRole.NetworkOwner, UserRole.SuperAdmin)
   @ApiOperation({ summary: 'Список записей по фильтрам.' })
-  list(@Query() query: ListAppointmentsQueryDto) {
-    return this.appointmentsService.list(query);
+  list(@Query() query: ListAppointmentsQueryDto, @CurrentUser() user: JwtAccessPayload) {
+    return this.appointmentsService.list(query, user);
   }
 
   @Patch(':id/confirm')

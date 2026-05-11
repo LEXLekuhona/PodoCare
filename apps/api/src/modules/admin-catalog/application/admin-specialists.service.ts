@@ -23,6 +23,10 @@ function isUniqueViolation(e: unknown): e is Prisma.PrismaClientKnownRequestErro
   return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
 }
 
+function isFkViolation(e: unknown): e is Prisma.PrismaClientKnownRequestError {
+  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2003';
+}
+
 @Injectable()
 export class AdminSpecialistsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -210,6 +214,7 @@ export class AdminSpecialistsService {
         createdAt: true,
         specialistProfile: {
           select: {
+            id: true,
             specializations: true,
             services: { select: { serviceId: true } },
             categories: { select: { categoryId: true } },
@@ -233,6 +238,7 @@ export class AdminSpecialistsService {
       primaryStudioId: u.studioId,
       isActive: u.isActive,
       createdAt: u.createdAt.toISOString(),
+      specialistProfileId: u.specialistProfile?.id ?? null,
       specialistProfile: {
         specializations: u.specialistProfile?.specializations ?? [],
         studios: u.specialistProfile?.studios.map((l) => l.studio) ?? [],
@@ -485,22 +491,40 @@ export class AdminSpecialistsService {
     return this.getById(actor, id);
   }
 
-  async deactivate(actor: JwtAccessPayload, id: string) {
+  async remove(actor: JwtAccessPayload, id: string) {
     if (id === actor.sub) {
-      throw new BadRequestException('Нельзя деактивировать свою учётную запись');
+      throw new BadRequestException('Нельзя удалить свою учётную запись');
     }
     await this.assertCanAccessSpecialistRow(actor, id);
     const existing = await this.prisma.user.findUnique({
       where: { id },
-      select: { id: true, role: true },
+      select: {
+        id: true,
+        role: true,
+        specialistProfile: { select: { id: true } },
+      },
     });
-    if (!existing || existing.role !== UserRole.Specialist) {
+    if (!existing || existing.role !== UserRole.Specialist || !existing.specialistProfile) {
       throw new NotFoundException(`Специалист ${id} не найден`);
     }
-    await this.prisma.user.update({
-      where: { id },
-      data: { isActive: false },
+    const appointmentCount = await this.prisma.appointment.count({
+      where: { specialistId: existing.specialistProfile.id },
     });
+    if (appointmentCount > 0) {
+      throw new ConflictException(
+        'Пока у специалиста есть записи на приём, удалить его нельзя. В календаре отмените приёмы или перенесите их к другому специалисту — после этого можно будет удалить профиль.',
+      );
+    }
+    try {
+      await this.prisma.user.delete({ where: { id } });
+    } catch (e) {
+      if (isFkViolation(e)) {
+        throw new ConflictException(
+          'Этого специалиста пока нельзя удалить: в системе остались связанные с ним данные (например, записи после приёма или материалы для клиентов). Если нужна помощь, напишите в поддержку.',
+        );
+      }
+      throw e;
+    }
     return { ok: true };
   }
 }

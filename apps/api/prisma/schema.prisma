@@ -276,6 +276,7 @@ enum PaymentMethod {
   CARD
   INSTALLMENT
   IN_STUDIO
+  CASH
 
   @@map("payment_method")
 }
@@ -478,6 +479,8 @@ model Studio {
   orders          Order[]
   treatmentPlans  TreatmentPlan[]
   specialistStudios SpecialistStudio[]
+  physicalGoodInventory PhysicalGoodStudioInventory[]
+  acquiringTerminals AcquiringTerminal[]
 
   @@index([networkId])
   @@index([isActive])
@@ -552,6 +555,7 @@ model User {
   visitProtocolsAuthor  AppointmentProtocol[] @relation("ProtocolAuthor")
   visitProtocolsUpdated AppointmentProtocol[] @relation("ProtocolUpdatedBy")
   orders                Order[]
+  staffAuthoredVisitInvoices Order[] @relation("StaffVisitInvoiceAuthor")
   programInquiries      ProgramInquiry[]      @relation("ProgramInquiryClient")
   programInquiriesAssigned ProgramInquiry[]   @relation("ProgramInquiryAssignee")
   installmentRequests   InstallmentRequest[]
@@ -561,6 +565,7 @@ model User {
   programsAuthored      Program[]             @relation("ProgramAuthor")
   pushDevices           PushDevice[]
   notificationPreference NotificationPreference?
+  walkInProfilesLinked  WalkInClient[]        @relation("WalkInLinkedUser")
 
   @@index([studioId])
   @@index([role])
@@ -639,9 +644,11 @@ model WalkInClient {
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   studio       Studio        @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  linkedUser   User?         @relation("WalkInLinkedUser", fields: [linkedUserId], references: [id], onDelete: SetNull)
   appointments Appointment[] @relation("AppointmentWalkIn")
+  orders       Order[]
 
-  @@index([studioId, phone])
+  @@unique([studioId, phone])
   @@map("walk_in_clients")
 }
 
@@ -733,6 +740,7 @@ model Service {
   appointments Appointment[]
   promoCodes   PromoCode[]         @relation("PromoCodeService")
   ctas         ContentCta[]        @relation("CtaService")
+  orderItems   OrderItem[]
 
   @@index([studioId, isActive])
   @@index([categoryId])
@@ -823,6 +831,7 @@ model Appointment {
   consents    Consent[]
   protocol    AppointmentProtocol?
   treatmentPlans TreatmentPlan[]
+  visitOrders Order[]
 
   @@index([studioId, startsAt])
   @@index([specialistId, startsAt])
@@ -1348,10 +1357,31 @@ model PhysicalGood {
   orderItems OrderItem[]
   promoCodes PromoCode[]          @relation("PromoCodePhysicalGood")
   ctas       ContentCta[]         @relation("CtaGood")
+  studioInventory PhysicalGoodStudioInventory[]
 
   @@index([networkId, isActive])
   @@index([categoryId])
   @@map("physical_goods")
+}
+
+model PhysicalGoodStudioInventory {
+  id         String   @id @default(uuid()) @db.Uuid
+  goodId     String   @map("good_id") @db.Uuid
+  studioId   String   @map("studio_id") @db.Uuid
+  isAvailable Boolean @default(true) @map("is_available")
+  /// null = остаток не отслеживаем.
+  stock      Int?
+  /// null = использовать базовую цену товара.
+  priceMinor Int?     @map("price_minor")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  good   PhysicalGood @relation(fields: [goodId], references: [id], onDelete: Cascade)
+  studio Studio       @relation(fields: [studioId], references: [id], onDelete: Cascade)
+
+  @@unique([goodId, studioId])
+  @@index([studioId, isAvailable])
+  @@map("physical_good_studio_inventory")
 }
 
 model PhysicalGoodCategory {
@@ -1421,9 +1451,15 @@ model ProgramInquiry {
 /// и PHYSICAL_GOOD.
 model Order {
   id                 String      @id @default(uuid()) @db.Uuid
-  userId             String      @map("user_id") @db.Uuid
+  /// null только для счёта после приёма у walk-in (есть walkInClientId).
+  userId             String?     @map("user_id") @db.Uuid
+  walkInClientId     String?     @map("walk_in_client_id") @db.Uuid
   /// null если только цифровой контент (студия не при чём).
   studioId           String?     @map("studio_id") @db.Uuid
+  /// Счёт после приёма (услуги + товары в студии).
+  appointmentId      String?     @map("appointment_id") @db.Uuid
+  /// Специалист/сотрудник, выставивший счёт в студии.
+  staffInvoiceAuthorUserId String? @map("staff_invoice_author_user_id") @db.Uuid
   orderNumber        String      @unique @map("order_number")
   status             OrderStatus @default(PENDING)
   currency           String      @default("RUB")
@@ -1443,8 +1479,11 @@ model Order {
   createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  user            User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user            User?            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  walkInClient    WalkInClient?    @relation(fields: [walkInClientId], references: [id], onDelete: SetNull)
   studio          Studio?          @relation(fields: [studioId], references: [id], onDelete: SetNull)
+  appointment     Appointment?     @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  staffInvoiceAuthor User?        @relation("StaffVisitInvoiceAuthor", fields: [staffInvoiceAuthorUserId], references: [id], onDelete: SetNull)
   promoCode       PromoCode?       @relation(fields: [appliedPromoCodeId], references: [id], onDelete: SetNull)
   items           OrderItem[]
   payments        Payment[]
@@ -1452,7 +1491,9 @@ model Order {
   shippingAddress ShippingAddress? @relation(fields: [shippingAddressId], references: [id], onDelete: SetNull)
 
   @@index([userId, status])
+  @@index([walkInClientId])
   @@index([studioId, status])
+  @@index([appointmentId])
   @@map("orders")
 }
 
@@ -1463,6 +1504,7 @@ model OrderItem {
   id              String      @id @default(uuid()) @db.Uuid
   orderId         String      @map("order_id") @db.Uuid
   productType     ProductType @map("product_type")
+  serviceId       String?     @map("service_id") @db.Uuid
   physicalGoodId  String?     @map("physical_good_id") @db.Uuid
   contentSeriesId String?     @map("content_series_id") @db.Uuid
   /// Имя на момент заказа — чтобы не сломалось, если потом переименуют SKU.
@@ -1473,9 +1515,11 @@ model OrderItem {
   createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
 
   order         Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  service       Service?      @relation(fields: [serviceId], references: [id], onDelete: SetNull)
   physicalGood  PhysicalGood? @relation(fields: [physicalGoodId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
+  @@index([serviceId])
   @@map("order_items")
 }
 
@@ -1556,6 +1600,42 @@ model Payment {
   @@index([orderId, status])
   @@index([status])
   @@map("payments")
+}
+
+/// Факт обработки входящего webhook события провайдера (идемпотентность).
+model ProcessedProviderWebhook {
+  id         String          @id @default(uuid()) @db.Uuid
+  provider   PaymentProvider
+  externalId String          @map("external_id")
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([provider, externalId])
+  @@map("processed_provider_webhooks")
+}
+
+/// Терминал / магазин эквайринга (Т‑Банк: TerminalKey + пароль; ЮKassa: shopId + secret).
+/// Секрет шифруется AES-256-GCM (см. `CryptoService`, ключ `DATA_ENCRYPTION_KEY`).
+model AcquiringTerminal {
+  id               String            @id @default(uuid()) @db.Uuid
+  provider         PaymentProvider
+  /// null — дефолт платформы для студий без своего терминала.
+  studioId         String?           @map("studio_id") @db.Uuid
+  label            String
+  /// TerminalKey (Т‑Банк) или shopId (ЮKassa).
+  publicId         String            @map("public_id")
+  secretCipherText Bytes             @map("secret_cipher_text")
+  secretIv         Bytes             @map("secret_iv")
+  secretAuthTag    Bytes             @map("secret_auth_tag")
+  notificationUrl  String?           @map("notification_url")
+  deviceDataJson   String?           @map("device_data_json") @db.Text
+  isActive         Boolean           @default(true) @map("is_active")
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  studio Studio? @relation(fields: [studioId], references: [id], onDelete: Cascade)
+
+  @@index([provider, studioId, isActive])
+  @@map("acquiring_terminals")
 }
 
 /// Заявка на рассрочку через банковского партнёра (Т-Рассрочка, Halva и т.п.).

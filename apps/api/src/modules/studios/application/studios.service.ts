@@ -104,12 +104,33 @@ export class StudiosService {
         imageUrls: true,
         priceMinor: true,
         currency: true,
+        stock: true,
+        studioInventory: {
+          where: { studioId },
+          select: {
+            isAvailable: true,
+            stock: true,
+            priceMinor: true,
+          },
+        },
       },
     });
-    return rows.map((row) => ({
-      ...row,
-      category: row.category.name,
-    }));
+    return rows.map((row) => {
+      const inventory = row.studioInventory[0] ?? null;
+      return {
+        id: row.id,
+        slug: row.slug,
+        name: row.name,
+        description: row.description,
+        brand: row.brand,
+        imageUrls: row.imageUrls,
+        currency: row.currency,
+        category: row.category.name,
+        priceMinor: inventory?.priceMinor ?? row.priceMinor,
+        isAvailable: inventory?.isAvailable ?? true,
+        stock: inventory?.stock ?? row.stock ?? null,
+      };
+    });
   }
 
   async listHealthConcerns() {

@@ -1,16 +1,18 @@
 
-import { FaqCategory } from '@srs/shared-types';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { FaqCategory } from '@srs/shared-types'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
-import { ApiError, apiRequest } from '../../api/client';
-import { useAuth } from '../../auth/AuthContext';
-import { useDebouncedValue } from '../../hooks/useDebouncedValue';
-import { canMutateTenantCatalog } from '../../lib/roles';
-import { FilterBar } from '../../ui/FilterBar';
-import { useToast } from '../../ui/ToastContext';
+import { ApiError, apiRequest } from '../../api/client'
+import { useAuth } from '../../auth/AuthContext'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { canMutateTenantCatalog } from '../../lib/roles'
+import { DeleteIcon } from '../../ui/DeleteIcon'
+import EditIcon from '../../ui/EditIcon'
+import { FilterBar } from '../../ui/FilterBar'
+import { useToast } from '../../ui/ToastContext'
 
-import type { FormEvent } from 'react';
+import type { FormEvent } from 'react'
 
 interface Row {
   id: string;
@@ -34,6 +36,7 @@ function nextSortOrder(items: Array<{ sortOrder: number }>): number {
   const maxSortOrder = items.reduce((max, item) => Math.max(max, item.sortOrder), -10);
   return maxSortOrder + 10;
 }
+
 
 export function FaqPage() {
   const { user } = useAuth();
@@ -208,6 +211,9 @@ export function FaqPage() {
                         <span className="inline-actions">
                           <button
                             type="button"
+                            className="action-icon-btn"
+                            aria-label="Изменить вопрос"
+                            title="Изменить"
                             onClick={() =>
                               setModal({
                                 mode: 'edit',
@@ -221,10 +227,16 @@ export function FaqPage() {
                               })
                             }
                           >
-                            Изменить
+                            <EditIcon />
                           </button>
-                          <button type="button" className="danger" onClick={() => void remove(r.id, r.question)}>
-                            Удалить
+                          <button
+                            type="button"
+                            className="danger action-icon-btn"
+                            aria-label="Удалить вопрос"
+                            title="Удалить"
+                            onClick={() => void remove(r.id, r.question)}
+                          >
+                            <DeleteIcon />
                           </button>
                         </span>
                       </td>

@@ -1,5 +1,7 @@
 import 'reflect-metadata';
 
+import { join } from 'node:path';
+
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
@@ -31,7 +33,8 @@ async function bootstrap(): Promise<void> {
   app.set('trust proxy', 1);
   /** Иначе Express отдаёт 304 + пустое тело при If-None-Match — RN OkHttp ломает JSON в клиенте. */
   app.set('etag', false);
-  app.use(helmet({ contentSecurityPolicy: false }));
+  app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+  app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
   app.enableCors({
     origin: appCfg.corsOrigins,
     credentials: appCfg.corsOrigins !== '*',

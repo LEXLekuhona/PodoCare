@@ -177,8 +177,9 @@ export class AuthService {
         });
       }
 
-      const firstName = this.getDefaultName(input.firstName, 'Новый');
-      const lastName = this.getDefaultName(input.lastName, 'Клиент');
+      // Пустые ФИО: клиент заполняет на экране `/(auth)/name` после OTP (см. mobile otp.tsx).
+      const firstName = this.getDefaultName(input.firstName, '');
+      const lastName = this.getDefaultName(input.lastName, '');
       return tx.user.create({
         data: {
           role: UserRole.Client,
@@ -189,6 +190,11 @@ export class AuthService {
           locale: 'ru',
         },
       });
+    });
+
+    await this.prisma.walkInClient.updateMany({
+      where: { phone: normalizedPhone, linkedUserId: null },
+      data: { linkedUserId: user.id },
     });
 
     const tokens = await this.createSessionAndSignTokens({

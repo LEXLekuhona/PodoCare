@@ -167,7 +167,12 @@ export async function apiRequest<T>(
     }
   })() : null;
   if (!res.ok) {
-    const msg = rawText.trim() ? rawText.trim() : nestMessage(body);
+    const msg =
+      body && typeof body === 'object'
+        ? nestMessage(body)
+        : rawText.trim()
+          ? rawText.trim()
+          : 'Ошибка запроса';
     throw new ApiError(res.status, msg, body ?? rawText);
   }
   if (!rawText.trim()) return null as T;

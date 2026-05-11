@@ -86,7 +86,7 @@ describe('Reviews (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/reviews')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ comment: 'короткий' });
+      .send({ comment: 'корот' });
     expect(res.status).toBe(400);
   });
 

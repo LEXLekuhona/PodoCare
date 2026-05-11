@@ -2,7 +2,9 @@ import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
+import { registerSessionExpiredHandler } from '@/features/auth/session-expired-nav';
 import { ensureSessionReady } from '@/features/auth/session-store';
+import { hydrateNextAppointmentFromDisk } from '@/features/appointment/next-appointment-session';
 import { syncPushDeviceWithServer } from '@/features/push/sync-push-device';
 
 export default function AppLayout() {
@@ -21,9 +23,20 @@ export default function AppLayout() {
   }, []);
 
   useEffect(() => {
+    registerSessionExpiredHandler(() => {
+      router.replace('/(auth)/phone');
+    });
+  }, [router]);
+
+  useEffect(() => {
     if (gate !== 'no') return;
     router.replace('/(auth)/phone');
   }, [gate, router]);
+
+  useEffect(() => {
+    if (gate !== 'ok') return;
+    void hydrateNextAppointmentFromDisk();
+  }, [gate]);
 
   useEffect(() => {
     if (gate !== 'ok') return;
@@ -56,6 +69,10 @@ export default function AppLayout() {
       <Stack.Screen name="service-selection" options={{ headerShown: false }} />
       <Stack.Screen name="health-concern/[slug]" options={{ headerShown: false }} />
       <Stack.Screen name="studio-direction/[slug]" options={{ headerShown: false }} />
+      <Stack.Screen name="product/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="product/favorites" options={{ headerShown: false }} />
+      <Stack.Screen name="content/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="quiz" options={{ headerShown: false }} />
       <Stack.Screen name="feedback" options={{ headerShown: false }} />
       <Stack.Screen name="notification-settings" options={{ headerShown: false }} />
       <Stack.Screen name="support-chat" options={{ headerShown: false }} />

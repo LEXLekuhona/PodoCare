@@ -1,96 +1,77 @@
 # Roadmap Status (Single Source of Truth)
 
-Этот документ — единственная точка фиксации фактического статуса спринтов.
-Обновляется вместе с кодом и релизным чеклистом.
+Единая точка фиксации статуса спринтов и монетизации. Обновлять вместе с кодом и релизным чеклистом.
 
-## Sprint 1 — факт выполнения
+**До коммерческого запуска (окружения, сторы, юридика):** `docs/launch-backlog.md`  
+**Релизный gate на каждый выкат:** `docs/release-checklist.md`  
+**Инфраструктура и эксплуатация:** `docs/infrastructure-and-operations.md`, `docs/release-notes-template.md`  
+**Закрытый 6-недельный план и постоянные правила:** `docs/sprint-plan-6-weeks.md`
 
-### Закрыто (shipped)
+---
 
-- Core stability gate в CI: отдельный job `core-e2e-gate` с `pnpm --filter @srs/api test:e2e:core -- --ci` (`auth + notifications + appointments`) в `.github/workflows/ci.yml`.
-- Backend core покрыт e2e и используется как merge-gate:
-  - Auth: OTP/staff login/refresh/logout + `401/403` контракты.
-  - Notifications: шаблоны, reminder policies, SMS queue/worker, preferences, push devices.
-  - Appointments: create/reschedule/cancel, lifecycle jobs, перепланирование reminder jobs.
-- Очереди и наблюдаемость:
-  - `GET /api/v1/health/queues` реализован и покрыт e2e smoke-тестом.
-  - Queue health по `notifications` и `appointments` включён в `GET /api/v1/health`.
-- Release governance:
-  - релизный чеклист: `docs/release-checklist.md`;
-  - PR template: `.github/pull_request_template.md`;
-  - PR checklist gate: `.github/workflows/pr-checklist.yml`.
+## Сводка по спринтам 1–3 (shipped)
 
-### Перенесено в Sprint 2
+- **Sprint 1:** core e2e merge-gate (`auth`, `notifications`, `appointments`), `GET /api/v1/health/queues`, интеграция очередей в `GET /api/v1/health`, релизный чеклист, PR template и PR checklist gate в CI.
+- **Sprint 2:** контентная воронка end-to-end (в т.ч. paywall/preview, CTA на mobile, админ-редактор), диагностический квиз (builder, scoring, anonymous + merge), in-app медиа для обучения — см. [ADR 0002](adr/0002-mobile-education-in-app-playback.md); валидация `body` контента на write; e2e по новым guarded-маршрутам по мере добавления.
+- **Sprint 3:** план лечения / протокол визита сквозняком, уведомления о плане; monetization MVP в API (program-inquiry, installment, YooKassa, orders, shipment, visit-invoice, Tinkoff/терминалы, idempotent webhooks) — детали в блоке Monetization ниже.
 
-- **Обучение (mobile):** просмотр видео **в приложении** (нативный плеер), план фаз — [ADR 0002: mobile education in-app playback](adr/0002-mobile-education-in-app-playback.md). Внешние URL — вспомогательный сценарий (CTA), не замена in-app для урока.
-- Content funnel end-to-end: CRUD серий/контента/CTA, audience/paywall, progress и `FunnelEvent`, публикация с push.
-- Diagnostic quiz вертикаль: редактор квиза, scoring engine, anonymous flow и merge после регистрации.
-- Treatment plan / appointment protocol как полноценный пользовательский флоу (tablet + client visibility).
+---
 
-## Sprint 2 — core gate перед monetization
-
-### Обязательный core scope (до запуска monetization-ветки)
-
-- Content funnel.
-- Diagnostic quiz.
-- Treatment plan / appointment protocol.
-
-### Definition of Done для Sprint 2 core
-
-- На каждый core-поток есть минимум 1 сквозной e2e happy-path.
-- Для новых protected endpoints есть security e2e (`401/403`).
-- Merge в `main` проходит только при зелёных core e2e + PR checklist gate.
-- KPI стабильности не хуже baseline Sprint 1.
-
-## Monetization-ветка (после core Sprint 2)
+## Monetization (ветка после core)
 
 ### Цель
 
-Монетизация длинных программ и товаров: заявка, рассрочка, оплата, заказ, доставка.
+Монетизация программ и товаров: заявка, рассрочка, оплата, заказ, доставка.
 
-### Порядок реализации
+### Порядок реализации (логический)
 
 1. `program-inquiry`
 2. `installment-request`
-3. `payments` (ЮKassa: СБП/карты)
+3. `payments` (ЮKassa)
 4. `orders` + `shipment`
 
-### In Scope (минимум)
+### Факт в коде (backend MVP, май 2026)
 
-- Лид на программу с воронки.
-- Заявка на рассрочку.
-- Создание платежа, webhook-статусы, идемпотентность.
-- Создание заказа и статусов доставки.
+- API: `program-inquiries`, `installment-requests`, `orders/checkout`, `orders/:id/payments`, `webhooks/yookassa`, `payments/:id/refund`, `orders/:id/shipment`.
+- Счёт после приёма: `POST /orders/visit-invoice`, оплата `visit-payments/cash`, `visit-payments/tinkoff-init`, `POST /webhooks/tinkoff`; онлайн-оплата клиентом по такому заказу заблокирована. Позиции `SERVICE` + `PHYSICAL_GOOD`, списание остатка студии при успешной оплате.
+- Терминалы: `acquiring_terminals`, `GET/POST/PATCH/DELETE /admin/acquiring-terminals` (`SUPER_ADMIN`), шифрование `DATA_ENCRYPTION_KEY`; приоритет терминала студии → платформенный → env `TINKOFF_*`.
+- Идемпотентность webhook: `processed_provider_webhooks`. Без `YOOKASSA_*` в dev — провайдер `MANUAL`.
+- E2E: `test/e2e/monetization.e2e-spec.ts`, `treatment-plans.e2e-spec.ts` (в т.ч. уведомление о плане).
 
-### Out of Scope
+### Out of Scope (пока)
 
 - Полноценный ERP/складской контур.
-- Мульти-эквайринг в Sprint 2.
+- Полный мульти-эквайринг с динамическим роутингом сумм (частично закрыто терминалами в БД; развитие — по продукту).
 
-### Acceptance Criteria
+### Acceptance Criteria (ещё проверять на staging/prod)
 
-- От CTA до оплаченного заказа есть сквозной happy-path.
-- Закрыты webhook/payment idempotency кейсы.
-- Финансовые статусы консистентны (`no double charge`).
+- Сквозной happy-path от CTA до оплаченного заказа.
+- Webhook/payment idempotency без двойного списания.
+- Финансовые статусы консистентны.
 
-### Общие нефункциональные требования
+Открытые **нефункциональные** шаги до продажи (ключи, сторы, алерты): `docs/launch-backlog.md`.
 
-- Безопасность: новые protected endpoints покрыты `401/403` e2e.
-- Качество: `lint`/`typecheck`/`test` зелёные, без новых flaky core e2e.
-- Наблюдаемость: логи с `requestId`, ключевыми `entityId`, критичными статусами.
-- Миграции: Prisma migration + rollback considerations.
-- Контракты: backward compatibility для mobile/admin.
-- Документация: `README`, `docs/roadmap.md`, release notes обновлены.
+---
 
-## KPI стабильности (baseline на конец Sprint 1)
+## Общие нефункциональные требования
+
+- Новые protected endpoints — e2e `401`/`403`.
+- `lint` / `typecheck` / `test` без новых flaky core e2e.
+- Логи: `requestId`, ключевые `entityId`, критичные статусы.
+- Миграции: Prisma + учёт отката (см. guardrails репозитория).
+- Контракты: обратная совместимость mobile/admin.
+
+---
+
+## KPI стабильности (baseline)
 
 - Core e2e pass rate (merge-gate): **100%** обязательных прогонов в CI.
-- Core e2e flaky rate: **0%** (без ручных retry для прохождения gate).
-- Инциденты очередей reminders/lifecycle: **0** критических инцидентов на закрытии спринта.
+- Core e2e flaky rate: **0%** (без ручных retry ради gate).
+- Инциденты очередей reminders/lifecycle: **0** критических на закрытии спринта.
 
-## Правило "2–3 спринта без регрессий"
+## Правило «2–3 спринта без регрессий»
 
-- Не опускаем pass rate core e2e ниже baseline merge-gate.
-- Не допускаем рост flaky rate выше baseline.
-- Не допускаем queue incidents уровня "блокер релиза".
-- Любое отклонение фиксируется в release notes и возвращает задачу в P0/core stability.
+- Не опускать pass rate core e2e ниже baseline.
+- Не допускать рост flaky rate выше baseline.
+- Не допускать queue incidents уровня блокера релиза.
+- Любое отклонение — в release notes и возврат задачи в P0/core stability.

@@ -21,6 +21,7 @@ import {
 } from '@expo-google-fonts/plus-jakarta-sans';
 
 import { useColorScheme } from '@/components/useColorScheme';
+import { initConnectivityOnce, subscribeConnectivity } from '@/shared/network/connectivity';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -68,6 +69,14 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
+
+  useEffect(() => {
+    void initConnectivityOnce();
+    const unsub = subscribeConnectivity();
+    return () => {
+      unsub();
+    };
+  }, []);
 
   return (
     <SafeAreaProvider>

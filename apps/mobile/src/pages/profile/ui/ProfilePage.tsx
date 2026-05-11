@@ -17,8 +17,14 @@ import {
 
 import { Text, View } from '@/components/Themed';
 import { logoutAndClearSession } from '@/features/auth/session-store';
+import { loadProfileSnapshot, saveProfileSnapshot } from '@/features/offline/profile-screen-cache';
 import { getMe, type MeProfile } from '@/features/user/me-api';
 import { clearSelectedStudio } from '@/features/studio/local-studio-storage';
+import {
+  USER_OFFLINE_NO_CACHED_DATA,
+  USER_SERVER_NO_CACHED_DATA,
+} from '@/shared/api/user-facing-errors';
+import { fetchIsOffline } from '@/shared/network/connectivity';
 import { formatRuPhoneDisplay } from '@/shared/lib/phone';
 import { LeafLogo } from '@/shared/ui/icons/LeafLogo';
 import { SafeAreaPadding } from '@/shared/ui/safe-area';
@@ -37,16 +43,37 @@ function shortDisplayName(firstName: string, lastName: string): string {
 export function ProfilePage() {
   const [profile, setProfile] = useState<MeProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [emptyMessage, setEmptyMessage] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutModalVisible, setLogoutModalVisible] = useState(false);
 
   const loadProfile = useCallback(async () => {
     setLoadingProfile(true);
+    setEmptyMessage(null);
     try {
-      const me = await getMe();
-      setProfile(me);
-    } catch {
-      setProfile(null);
+      if (await fetchIsOffline()) {
+        const snap = await loadProfileSnapshot();
+        if (snap) {
+          setProfile(snap);
+        } else {
+          setProfile(null);
+          setEmptyMessage(USER_OFFLINE_NO_CACHED_DATA);
+        }
+        return;
+      }
+      try {
+        const me = await getMe();
+        setProfile(me);
+        await saveProfileSnapshot(me);
+      } catch {
+        const snap = await loadProfileSnapshot();
+        if (snap) {
+          setProfile(snap);
+        } else {
+          setProfile(null);
+          setEmptyMessage(USER_SERVER_NO_CACHED_DATA);
+        }
+      }
     } finally {
       setLoadingProfile(false);
     }
@@ -108,6 +135,10 @@ export function ProfilePage() {
 
           {loadingProfile ? (
             <ActivityIndicator style={styles.heroLoader} />
+          ) : emptyMessage != null ? (
+            <Text style={styles.emptyHeroText} lightColor="#1A1A2E" darkColor="#FFFFFF">
+              {emptyMessage}
+            </Text>
           ) : (
             <>
               <Text style={styles.userName} lightColor="#1A1A2E" darkColor="#FFFFFF">
@@ -394,6 +425,15 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     fontFamily: 'PlusJakartaSans_800ExtraBold',
+  },
+  emptyHeroText: {
+    marginTop: 8,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingHorizontal: 12,
+    fontFamily: 'Inter_600SemiBold',
   },
   userPhone: {
     fontSize: 15,

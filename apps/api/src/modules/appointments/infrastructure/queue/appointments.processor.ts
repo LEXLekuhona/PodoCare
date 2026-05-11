@@ -61,13 +61,24 @@ export class AppointmentsProcessor extends WorkerHost {
     if (!appointment) {
       return;
     }
+    if (appointment.completedAt) {
+      return;
+    }
+    const graceElapsed = appointment.endsAt.getTime() + 15 * 60 * 1000 <= Date.now();
+    if (!graceElapsed) {
+      return;
+    }
+    if (appointment.status === AppointmentStatus.InProgress) {
+      await this.prisma.appointment.update({
+        where: { id: appointment.id },
+        data: { status: AppointmentStatus.Completed, completedAt: new Date() },
+      });
+      return;
+    }
     if (![AppointmentStatus.Pending, AppointmentStatus.Confirmed].includes(appointment.status as AppointmentStatus)) {
       return;
     }
-    if (appointment.checkedInAt || appointment.completedAt) {
-      return;
-    }
-    if (appointment.endsAt.getTime() + 15 * 60 * 1000 > Date.now()) {
+    if (appointment.checkedInAt) {
       return;
     }
     await this.prisma.appointment.update({

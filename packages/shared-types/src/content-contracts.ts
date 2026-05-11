@@ -59,6 +59,21 @@ export interface ClientContentFeedResponse {
   items: ClientContentFeedItem[];
 }
 
+/**
+ * Ответ GET /client/content/items/:id — детальный материал для экрана чтения.
+ * Расширяет ленту полем `body` (JSON по формату) и метаданными для оффлайн/seekbar.
+ *
+ * Поле `body` сознательно типизировано как `unknown` на уровне контракта: его форма зависит
+ * от {@link ContentFormat} (см. validateContentItemBody на бэкенде). Клиент должен сам
+ * сужать тип после проверки формата, чтобы не терять валидацию хранения.
+ */
+export interface ClientContentItemDetail extends ClientContentFeedItem {
+  body: unknown;
+  durationSeconds: number | null;
+  isFreePreview: boolean;
+  seriesTitle: string;
+}
+
 /** Ответ POST /client/content/items/:id/progress */
 export interface ClientContentProgressSaved {
   itemId: string;

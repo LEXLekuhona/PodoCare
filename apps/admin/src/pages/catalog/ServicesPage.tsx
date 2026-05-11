@@ -7,6 +7,8 @@ import { useAuth } from '../../auth/AuthContext';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { slugify } from '../../lib/identifiers';
 import { canManageStaff, canMutateTenantCatalog } from '../../lib/roles';
+import { DeleteIcon } from '../../ui/DeleteIcon';
+import EditIcon from '../../ui/EditIcon';
 import { FilterBar } from '../../ui/FilterBar';
 
 import type { FormEvent } from 'react';
@@ -53,26 +55,6 @@ interface ServiceRow {
 
 type ServiceSortField = 'category' | 'name' | 'durationMinutes' | 'priceMinor';
 type SortDirection = 'asc' | 'desc';
-
-function EditIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M4 20h4l10-10-4-4L4 16v4Z" strokeWidth="1.8" />
-      <path d="m12 6 4 4" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function DeleteIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M4 7h16" strokeWidth="1.8" />
-      <path d="M9 7V4h6v3" strokeWidth="1.8" />
-      <path d="M7 7l1 13h8l1-13" strokeWidth="1.8" />
-      <path d="M10 11v6M14 11v6" strokeWidth="1.8" />
-    </svg>
-  );
-}
 
 interface FormState {
   name: string;
@@ -570,7 +552,7 @@ export function ServicesPage() {
                       gap: 6,
                     }}
                   >
-                    Продолжительность <span>{sortMark('durationMinutes')}</span>
+                    Время <span>{sortMark('durationMinutes')}</span>
                   </button>
                 </th>
                 <th>

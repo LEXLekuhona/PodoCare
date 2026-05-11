@@ -22,14 +22,14 @@ import { RolesGuard } from '../../auth/infrastructure/roles.guard';
 import { ContentService } from '../application/content.service';
 // Nest ValidationPipe relies on runtime metadata for DTO classes.
 // `import type` breaks `design:paramtypes`, causing whitelist validation to reject all properties.
-import { CreateClientContentProgressDto } from './dto/create-client-content-progress.dto';
-import { CreateContentCtaDto } from './dto/create-content-cta.dto';
-import { CreateContentItemDto } from './dto/create-content-item.dto';
-import { CreateContentSeriesDto } from './dto/create-content-series.dto';
-import { ListContentSeriesQueryDto } from './dto/list-content-series.query.dto';
-import { UpdateContentCtaDto } from './dto/update-content-cta.dto';
-import { UpdateContentItemDto } from './dto/update-content-item.dto';
-import { UpdateContentSeriesDto } from './dto/update-content-series.dto';
+import type { CreateClientContentProgressDto } from './dto/create-client-content-progress.dto';
+import type { CreateContentCtaDto } from './dto/create-content-cta.dto';
+import type { CreateContentItemDto } from './dto/create-content-item.dto';
+import type { CreateContentSeriesDto } from './dto/create-content-series.dto';
+import type { ListContentSeriesQueryDto } from './dto/list-content-series.query.dto';
+import type { UpdateContentCtaDto } from './dto/update-content-cta.dto';
+import type { UpdateContentItemDto } from './dto/update-content-item.dto';
+import type { UpdateContentSeriesDto } from './dto/update-content-series.dto';
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 
 const CONTENT_ADMIN_ROLES = [
@@ -131,6 +131,16 @@ export class ContentController {
   @ApiOperation({ summary: 'Лента контента для клиента.' })
   clientFeed(@CurrentUser() user: JwtAccessPayload) {
     return this.contentService.getClientFeed(user.sub);
+  }
+
+  @Get('client/content/items/:id')
+  @Roles(UserRole.Client)
+  @ApiOperation({ summary: 'Детальный материал для экрана чтения клиентом.' })
+  getClientItem(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.contentService.getClientItem(user.sub, id);
   }
 
   @Post('client/content/items/:id/progress')

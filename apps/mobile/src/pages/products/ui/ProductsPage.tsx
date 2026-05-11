@@ -1,12 +1,21 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { useFocusEffect } from '@react-navigation/native';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text, View } from '@/components/Themed';
 import { fetchStudioProducts, type StudioProductDto } from '@/features/products/products-api';
+import { loadFavoriteEntries } from '@/features/products/product-favorites-store';
+import { loadProductsSnapshot, saveProductsSnapshot } from '@/features/offline/products-screen-cache';
 import { loadSelectedStudio } from '@/features/studio/local-studio-storage';
 import { ApiError } from '@/shared/api/api-error';
+import {
+  USER_OFFLINE_NO_CACHED_DATA,
+  USER_SERVER_NO_CACHED_DATA,
+} from '@/shared/api/user-facing-errors';
+import { fetchIsOffline } from '@/shared/network/connectivity';
 import { LeafLogo } from '@/shared/ui/icons/LeafLogo';
 import { SafeAreaPadding } from '@/shared/ui/safe-area';
 
@@ -32,6 +41,21 @@ function iconForProduct(p: Product): React.ComponentProps<typeof FontAwesome>['n
   return 'leaf';
 }
 
+function mapSnapshotItemToDto(
+  item: Pick<
+    StudioProductDto,
+    'id' | 'name' | 'description' | 'category' | 'imageUrls' | 'priceMinor' | 'currency' | 'isAvailable' | 'stock'
+  >,
+): StudioProductDto {
+  return {
+    ...item,
+    slug: item.id,
+    brand: null,
+    isAvailable: item.isAvailable ?? true,
+    stock: item.stock ?? null,
+  };
+}
+
 function mapDto(dto: StudioProductDto, index: number): Product {
   const category = dto.category.trim() || UNCATEGORIZED;
   return {
@@ -48,25 +72,76 @@ function mapDto(dto: StudioProductDto, index: number): Product {
 export function ProductsPage() {
   const insets = useSafeAreaInsets();
   const [category, setCategory] = useState<CategoryId>('all');
+  const [selectedStudioId, setSelectedStudioId] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [favoriteEntries, setFavoriteEntries] = useState<{ productId: string; quantity: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [emptyMessage, setEmptyMessage] = useState<string | null>(null);
+
+  const refreshFavorites = useCallback(async (studioId: string | null = selectedStudioId) => {
+    if (!studioId) {
+      setFavoriteEntries([]);
+      return;
+    }
+    setFavoriteEntries(await loadFavoriteEntries(studioId));
+  }, [selectedStudioId]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setEmptyMessage(null);
     try {
       const studio = await loadSelectedStudio();
       if (!studio?.id) {
+        setSelectedStudioId(null);
+        setFavoriteEntries([]);
         setProducts([]);
         setError('Сначала выберите студию на главном экране');
         return;
       }
-      const list = await fetchStudioProducts(studio.id);
-      setProducts(list.map(mapDto));
-    } catch (e) {
-      setProducts([]);
-      setError(e instanceof ApiError ? e.message : 'Не удалось загрузить товары');
+      setSelectedStudioId(studio.id);
+      setFavoriteEntries(await loadFavoriteEntries(studio.id));
+      const disk = await loadProductsSnapshot();
+      const offline = await fetchIsOffline();
+      if (offline) {
+        if (disk != null && disk.studioId === studio.id) {
+          setProducts(disk.items.map((it, i) => mapDto(mapSnapshotItemToDto(it), i)));
+        } else {
+          setProducts([]);
+          setEmptyMessage(USER_OFFLINE_NO_CACHED_DATA);
+        }
+        return;
+      }
+      try {
+        const list = await fetchStudioProducts(studio.id);
+        setProducts(list.map(mapDto));
+        await saveProductsSnapshot({
+          v: 1,
+          studioId: studio.id,
+          items: list.map((p) => ({
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            category: p.category,
+            imageUrls: p.imageUrls,
+            priceMinor: p.priceMinor,
+            currency: p.currency,
+            isAvailable: p.isAvailable,
+            stock: p.stock,
+          })),
+        });
+      } catch (e) {
+        if (disk != null && disk.studioId === studio.id) {
+          setProducts(disk.items.map((it, i) => mapDto(mapSnapshotItemToDto(it), i)));
+          setError(null);
+          setEmptyMessage(null);
+        } else {
+          setProducts([]);
+          setEmptyMessage(USER_SERVER_NO_CACHED_DATA);
+          setError(e instanceof ApiError ? e.message : 'Не удалось загрузить товары');
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -75,6 +150,12 @@ export function ProductsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshFavorites();
+    }, [refreshFavorites]),
+  );
 
   const categories = useMemo(() => {
     const uniq = Array.from(new Set(products.map((p) => p.category)));
@@ -92,6 +173,15 @@ export function ProductsPage() {
     () => (category === 'all' ? products : products.filter((p) => p.category === category)),
     [category, products]
   );
+  const favoriteCount = useMemo(
+    () => favoriteEntries.reduce((s, e) => s + e.quantity, 0),
+    [favoriteEntries],
+  );
+  const favoriteIds = useMemo(() => new Set(favoriteEntries.map((e) => e.productId)), [favoriteEntries]);
+
+  const openProduct = useCallback((productId: string) => {
+    router.push(`/(app)/product/${productId}` as any);
+  }, []);
 
   const contentBottom = Math.max(insets.bottom, 16) + 24;
 
@@ -105,13 +195,32 @@ export function ProductsPage() {
           <RNView pointerEvents="none" style={styles.headerCenter}>
             <Text style={styles.brand}>Solodova Recovery System</Text>
           </RNView>
-          <Pressable hitSlop={12} style={styles.iconBtn} onPress={() => {}}>
-            <FontAwesome name="shopping-bag" size={18} color="#2D6A4F" />
+          <Pressable
+            hitSlop={12}
+            style={styles.iconBtn}
+            accessibilityRole="button"
+            accessibilityLabel={favoriteCount > 0 ? `Избранное, ${favoriteCount} шт.` : 'Избранное'}
+            onPress={() => router.push('/(app)/product/favorites' as any)}
+          >
+            <FontAwesome name={favoriteCount > 0 ? 'heart' : 'heart-o'} size={18} color="#2D6A4F" />
+            {favoriteCount > 0 ? (
+              <RNView style={styles.favoriteCounter}>
+                <Text style={styles.favoriteCounterText}>{favoriteCount > 9 ? '9+' : favoriteCount}</Text>
+              </RNView>
+            ) : null}
           </Pressable>
         </View>
       </SafeAreaPadding>
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottom }]}>
+        {emptyMessage != null ? (
+          <View style={styles.emptyWrap} lightColor="transparent" darkColor="transparent">
+            <Text style={styles.emptyText} lightColor="#1A1A2E" darkColor="#FFFFFF">
+              {emptyMessage}
+            </Text>
+          </View>
+        ) : (
+          <>
         <View style={styles.hero} lightColor="transparent" darkColor="transparent">
           <Text style={styles.heroTitle}>Витрина студии</Text>
           <Text style={styles.heroSub} lightColor="rgba(11,27,20,0.65)" darkColor="rgba(255,255,255,0.65)">
@@ -156,8 +265,15 @@ export function ProductsPage() {
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.featuredRow}>
             {featured.map((p) => (
-              <Pressable key={p.id} onPress={() => {}} style={({ pressed }) => [pressed && styles.pressed]}>
+              <Pressable key={p.id} onPress={() => openProduct(p.id)} style={({ pressed }) => [pressed && styles.pressed]}>
                 <View style={styles.featuredCard} lightColor="#FFFFFF" darkColor="#0C1A14">
+                  {favoriteIds.has(p.id) ? (
+                    <View style={styles.badge} lightColor="rgba(45,106,79,0.10)" darkColor="rgba(149,212,179,0.14)">
+                      <Text style={styles.badgeText} lightColor="#2D6A4F" darkColor="#95D4B3">
+                        В избранном
+                      </Text>
+                    </View>
+                  ) : null}
                   <RNView style={styles.featuredIconWrap}>
                     <FontAwesome name={iconForProduct(p)} size={22} color="#2D6A4F" />
                   </RNView>
@@ -204,7 +320,7 @@ export function ProductsPage() {
           ) : null}
           <View style={styles.list} lightColor="transparent" darkColor="transparent">
             {catalog.map((p) => (
-              <Pressable key={p.id} onPress={() => {}} style={({ pressed }) => [pressed && styles.pressed]}>
+              <Pressable key={p.id} onPress={() => openProduct(p.id)} style={({ pressed }) => [pressed && styles.pressed]}>
                 <View style={styles.listCard} lightColor="#FFFFFF" darkColor="#0C1A14">
                   <View style={styles.listThumb} lightColor="rgba(45,106,79,0.10)" darkColor="rgba(149,212,179,0.14)">
                     <FontAwesome name="picture-o" size={20} color="#2D6A4F" />
@@ -212,6 +328,9 @@ export function ProductsPage() {
                   <View style={styles.listMain} lightColor="transparent" darkColor="transparent">
                     <View style={styles.listTop} lightColor="transparent" darkColor="transparent">
                       <Text style={styles.listTitle}>{p.title}</Text>
+                      {favoriteIds.has(p.id) ? (
+                        <FontAwesome name="heart" size={14} color="#2D6A4F" />
+                      ) : null}
                     </View>
                     <Text style={styles.listSub} lightColor="rgba(11,27,20,0.55)" darkColor="rgba(255,255,255,0.55)">
                       {p.subtitle ?? 'Описание уточним на приёме'}
@@ -226,6 +345,8 @@ export function ProductsPage() {
             ))}
           </View>
         </View>
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -275,10 +396,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
+    position: 'relative',
+  },
+  favoriteCounter: {
+    position: 'absolute',
+    right: -3,
+    top: -3,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9999,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2D6A4F',
+  },
+  favoriteCounterText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '900',
   },
   content: {
     padding: 16,
     gap: 14,
+  },
+  emptyWrap: {
+    paddingVertical: 48,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '600',
+    textAlign: 'center',
+    fontFamily: 'Inter_600SemiBold',
   },
   hero: {
     gap: 8,

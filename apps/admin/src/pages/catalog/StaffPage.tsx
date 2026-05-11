@@ -6,6 +6,8 @@ import { ApiError, apiRequest } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { canManageStaff, canMutateTenantCatalog } from '../../lib/roles';
+import { DeleteIcon } from '../../ui/DeleteIcon';
+import EditIcon from '../../ui/EditIcon';
 import { FilterBar } from '../../ui/FilterBar';
 import { useToast } from '../../ui/ToastContext';
 
@@ -390,16 +392,24 @@ export function StaffPage() {
                     {manage ? (
                       <td>
                         <span className="inline-actions">
-                          <button type="button" onClick={() => openEdit(r)}>
-                            Изменить
+                          <button
+                            type="button"
+                            className="action-icon-btn"
+                            aria-label="Изменить сотрудника"
+                            title="Изменить"
+                            onClick={() => openEdit(r)}
+                          >
+                            <EditIcon />
                           </button>
                           <button
                             type="button"
-                            className="danger"
+                            className="danger action-icon-btn"
+                            aria-label="Удалить сотрудника"
+                            title="Удалить"
                             onClick={() => void removeRow(r)}
                             disabled={r.id === user?.id}
                           >
-                            Удалить
+                            <DeleteIcon />
                           </button>
                         </span>
                       </td>

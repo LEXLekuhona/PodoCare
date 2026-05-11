@@ -1,7 +1,11 @@
 import * as SecureStore from 'expo-secure-store';
 
+import { clearOfflineAppSnapshots } from '@/features/offline/app-snapshots';
+import { markRefreshAuthRejected, resetRefreshAuthRejected, takeRefreshAuthRejected } from '@/features/auth/session-refresh-state';
 import { clearRegisteredPushTokenCache } from '@/features/push/push-token-cache';
-import { apiFetchJson } from '@/shared/api/client';
+import { ApiError } from '@/shared/api/api-error';
+import { apiFetchJson, type ApiFetchInit } from '@/shared/api/client';
+import { fetchIsOffline } from '@/shared/network/connectivity';
 
 const REFRESH_TOKEN_KEY = 'srs.refreshToken.v1';
 
@@ -45,21 +49,33 @@ export async function rotateRefreshToken(): Promise<boolean> {
   if (rotatePromise) return rotatePromise;
 
   rotatePromise = (async () => {
+    resetRefreshAuthRejected();
     const refreshToken = await readRefreshToken();
     if (!refreshToken) return false;
+    if (await fetchIsOffline()) return false;
+    const refreshInit: ApiFetchInit = {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ refreshToken }),
+      skipOfflineMutationGuard: true,
+    };
     try {
-      const next = await apiFetchJson<AuthTokens>('/auth/refresh', {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ refreshToken }),
-      });
+      const next = await apiFetchJson<AuthTokens>('/auth/refresh', refreshInit);
       await setSessionTokens(next);
       return true;
-    } catch {
-      await clearSession();
+    } catch (e: unknown) {
+      if (e instanceof ApiError) {
+        if (e.kind === 'NO_INTERNET' || e.kind === 'TIMEOUT') return false;
+        if (e.status === 401) {
+          markRefreshAuthRejected();
+          await clearSession();
+          return false;
+        }
+        return false;
+      }
       return false;
     }
   })();
@@ -73,7 +89,13 @@ export async function rotateRefreshToken(): Promise<boolean> {
 
 export async function ensureSessionReady(): Promise<boolean> {
   if (memoryAccessToken) return true;
-  return rotateRefreshToken();
+  const refreshToken = await readRefreshToken();
+  if (!refreshToken) return false;
+  if (await fetchIsOffline()) return true;
+  const ok = await rotateRefreshToken();
+  if (ok) return true;
+  if (takeRefreshAuthRejected()) return false;
+  return true;
 }
 
 /**
@@ -81,7 +103,7 @@ export async function ensureSessionReady(): Promise<boolean> {
  */
 export async function logoutAndClearSession(): Promise<void> {
   const refreshToken = await readRefreshToken();
-  if (refreshToken) {
+  if (refreshToken && !(await fetchIsOffline())) {
     try {
       await apiFetchJson('/auth/logout', {
         method: 'POST',
@@ -97,4 +119,5 @@ export async function logoutAndClearSession(): Promise<void> {
   }
   await clearSession();
   await clearRegisteredPushTokenCache();
+  await clearOfflineAppSnapshots();
 }

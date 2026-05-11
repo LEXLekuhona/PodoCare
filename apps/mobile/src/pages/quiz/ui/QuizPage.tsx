@@ -1,24 +1,37 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
 import {
   completeQuizSession,
   createQuizSession,
   fetchActiveQuiz,
+  fetchPublishedQuiz,
+  mergeQuizSessionWithUserReliable,
   submitQuizAnswer,
   type QuizDto,
   type QuizResultDto,
 } from '@/features/quiz/quiz-api';
+import { resolveQuizResultNavigation } from '@/features/quiz/quiz-result-cta-routing';
 import {
   getQuizAnonToken,
   setLastQuizSessionId,
 } from '@/features/quiz/quiz-session-store';
 import { ApiError } from '@/shared/api/api-error';
+import { sanitizeRouteParam } from '@/shared/navigation/route-params';
 import { SafeAreaPadding } from '@/shared/ui/safe-area';
 
-export function QuizPage() {
+export type QuizPageProps = {
+  /** `app` — авторизованный клиент; `auth` — онбординг до входа. */
+  variant?: 'auth' | 'app';
+};
+
+export function QuizPage({ variant = 'auth' }: QuizPageProps) {
+  const params = useLocalSearchParams<{ quizId?: string }>();
+  const routeQuizId = sanitizeRouteParam(params.quizId);
+  const isApp = variant === 'app';
+
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [quiz, setQuiz] = useState<QuizDto | null>(null);
@@ -33,13 +46,18 @@ export function QuizPage() {
     void (async () => {
       setLoading(true);
       setError(null);
+      setStepIndex(0);
+      setSelectedByQuestion({});
+      setResult(null);
       try {
-        const activeQuiz = await fetchActiveQuiz();
+        const loaded = routeQuizId
+          ? await fetchPublishedQuiz(routeQuizId)
+          : await fetchActiveQuiz();
         const anonToken = await getQuizAnonToken();
-        const session = await createQuizSession({ quizId: activeQuiz.id, anonToken });
+        const session = await createQuizSession({ quizId: loaded.id, anonToken });
         if (cancelled) return;
         await setLastQuizSessionId(session.sessionId);
-        setQuiz(activeQuiz);
+        setQuiz(loaded);
         setSessionId(session.sessionId);
       } catch (e: unknown) {
         if (cancelled) return;
@@ -51,7 +69,7 @@ export function QuizPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [routeQuizId]);
 
   const questions = quiz?.questions ?? [];
   const currentQuestion = questions[stepIndex] ?? null;
@@ -73,7 +91,18 @@ export function QuizPage() {
         setStepIndex((prev) => prev + 1);
       } else {
         const completed = await completeQuizSession(sessionId);
-        setResult(completed.result);
+        if (isApp) {
+          const mergedOk = await mergeQuizSessionWithUserReliable(sessionId);
+          setResult(completed.result);
+          if (!mergedOk) {
+            Alert.alert(
+              'Синхронизация',
+              'Не удалось сразу привязать результат к профилю. Проверьте сеть или зайдите в приложение позже.',
+            );
+          }
+        } else {
+          setResult(completed.result);
+        }
       }
     } catch (e: unknown) {
       setError(e instanceof ApiError ? e.message : 'Не удалось сохранить ответ');
@@ -91,6 +120,42 @@ export function QuizPage() {
   }
 
   if (result) {
+    const nav = resolveQuizResultNavigation(result);
+    const hasInAppTarget = nav?.kind === 'expo-router';
+    const hasExternal = nav?.kind === 'external';
+
+    const primaryLabel = isApp
+      ? hasInAppTarget || hasExternal
+        ? result.recommendedCta?.label?.trim() || 'Перейти'
+        : 'Готово'
+      : hasExternal
+        ? result.recommendedCta?.label?.trim() || 'Открыть ссылку'
+        : result.recommendedCta?.label?.trim() || 'Продолжить и сохранить результат';
+
+    const onPrimary = async () => {
+      if (nav?.kind === 'external') {
+        try {
+          await Linking.openURL(nav.url);
+        } catch {
+          Alert.alert('Ошибка', 'Не удалось открыть ссылку');
+        }
+        if (isApp) router.back();
+        else router.replace('/(auth)/phone');
+        return;
+      }
+      if (nav?.kind === 'expo-router' && isApp) {
+        router.push({ pathname: nav.pathname, params: nav.params } as never);
+        return;
+      }
+      if (isApp) router.back();
+      else router.replace('/(auth)/phone');
+    };
+
+    const onSecondary = () => {
+      if (isApp) router.back();
+      else router.replace('/(auth)/phone');
+    };
+
     return (
       <View style={styles.root}>
         <SafeAreaPadding minTop={16} minBottom={16} style={styles.content}>
@@ -100,18 +165,13 @@ export function QuizPage() {
           {result.title ? <Text style={styles.resultTitle}>{result.title}</Text> : null}
           {result.description ? <Text style={styles.resultDescription}>{result.description}</Text> : null}
           <Pressable
-            onPress={() => router.replace('/(auth)/phone')}
+            onPress={() => void onPrimary()}
             style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
           >
-            <Text style={styles.primaryButtonText}>
-              {result.recommendedCta?.label?.trim() || 'Продолжить и сохранить результат'}
-            </Text>
+            <Text style={styles.primaryButtonText}>{primaryLabel}</Text>
           </Pressable>
-          <Pressable
-            onPress={() => router.replace('/(auth)/phone')}
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.secondaryButtonText}>Позже</Text>
+          <Pressable onPress={onSecondary} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+            <Text style={styles.secondaryButtonText}>{isApp ? 'Закрыть' : 'Позже'}</Text>
           </Pressable>
         </SafeAreaPadding>
       </View>

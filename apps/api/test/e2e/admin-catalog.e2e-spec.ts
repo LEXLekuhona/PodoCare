@@ -81,6 +81,7 @@ describe('Admin catalog (e2e)', () => {
       { method: 'delete', path: `/api/v1/admin/catalog/service-categories/${fakeId}` },
       { method: 'get', path: '/api/v1/admin/catalog/specialists' },
       { method: 'post', path: '/api/v1/admin/catalog/specialists', body: {} },
+      { method: 'delete', path: `/api/v1/admin/catalog/specialists/${fakeId}` },
       { method: 'post', path: `/api/v1/admin/catalog/specialists/${fakeId}/shifts/bulk`, body: {} },
       { method: 'get', path: '/api/v1/admin/education/series' },
       { method: 'post', path: '/api/v1/admin/education/series', body: {} },
@@ -243,23 +244,102 @@ describe('Admin catalog (e2e)', () => {
       });
     expect(createSpecialist.status).toBe(201);
 
-    const now = new Date();
-    const startsAt = new Date(now.getTime() + 3 * 60 * 60 * 1000);
-    const endsAt = new Date(startsAt.getTime() + 8 * 60 * 60 * 1000);
+    // Локальное время студии (IANA Europe/Moscow по умолчанию), формат YYYY-MM-DDTHH:mm — как у API.
     const createShift = await request(app.getHttpServer())
       .post(`/api/v1/admin/catalog/specialists/${createSpecialist.body.id}/shifts`)
       .set('Authorization', `Bearer ${token}`)
       .send({
         studioId: studio.id,
-        startsAt: startsAt.toISOString(),
-        endsAt: endsAt.toISOString(),
+        startsAtLocal: '2030-06-15T10:00',
+        endsAtLocal: '2030-06-15T18:00',
       });
     expect(createShift.status).toBe(201);
 
     const listShifts = await request(app.getHttpServer())
       .get(`/api/v1/admin/catalog/specialists/${createSpecialist.body.id}/shifts`)
+      .query({
+        from: '2030-06-01T00:00:00.000Z',
+        to: '2030-07-01T00:00:00.000Z',
+      })
       .set('Authorization', `Bearer ${token}`);
     expect(listShifts.status).toBe(200);
     expect(listShifts.body.some((x: { id: string }) => x.id === createShift.body.id)).toBe(true);
+  });
+
+  it('specialist can read assigned studios and services for clinical admin; rest of catalog stays forbidden', async () => {
+    const network = await prisma.network.create({
+      data: { name: 'Net ClinRead', slug: 'net-clin-read' },
+    });
+    const studioAllowed = await prisma.studio.create({
+      data: {
+        networkId: network.id,
+        name: 'Studio allowed',
+        address: 'A',
+        city: 'Moscow',
+        openingHours: {},
+      },
+    });
+    const studioOther = await prisma.studio.create({
+      data: {
+        networkId: network.id,
+        name: 'Studio other',
+        address: 'B',
+        city: 'SPb',
+        openingHours: {},
+      },
+    });
+    const specPassword = 'StrongPass123!';
+    const specUser = await prisma.user.create({
+      data: {
+        studioId: studioAllowed.id,
+        role: UserRole.Specialist,
+        phone: '+79992000051',
+        email: 'spec-clin-read@solodova-recovery.local',
+        passwordHash: await argon2.hash(specPassword),
+        firstName: 'Clinical',
+        lastName: 'Reader',
+      },
+    });
+    const profile = await prisma.specialistProfile.create({
+      data: {
+        userId: specUser.id,
+        studioId: studioAllowed.id,
+      },
+    });
+    await prisma.specialistStudio.create({
+      data: { specialistProfileId: profile.id, studioId: studioAllowed.id },
+    });
+    await prisma.service.create({
+      data: {
+        studioId: studioAllowed.id,
+        name: 'Care',
+        durationMinutes: 30,
+        priceMinor: 100000,
+      },
+    });
+
+    const token = await loginStaff(app, specUser.email!, specPassword);
+
+    const forbiddenNetworks = await request(app.getHttpServer())
+      .get('/api/v1/admin/catalog/networks')
+      .set('Authorization', `Bearer ${token}`);
+    expect(forbiddenNetworks.status).toBe(403);
+
+    const studios = await request(app.getHttpServer())
+      .get('/api/v1/admin/catalog/studios')
+      .set('Authorization', `Bearer ${token}`);
+    expect(studios.status).toBe(200);
+    expect(studios.body.map((s: { id: string }) => s.id)).toEqual([studioAllowed.id]);
+
+    const servicesOk = await request(app.getHttpServer())
+      .get(`/api/v1/admin/catalog/studios/${studioAllowed.id}/services`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(servicesOk.status).toBe(200);
+    expect(servicesOk.body.length).toBeGreaterThanOrEqual(1);
+
+    const servicesForbidden = await request(app.getHttpServer())
+      .get(`/api/v1/admin/catalog/studios/${studioOther.id}/services`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(servicesForbidden.status).toBe(403);
   });
 });

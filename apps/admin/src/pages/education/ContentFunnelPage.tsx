@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ApiError, apiRequest } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import { canManageStaff } from '../../lib/roles';
+import EditIcon from '../../ui/EditIcon';
+import { MarkdownEditor } from '../../ui/MarkdownEditor';
 import { useToast } from '../../ui/ToastContext';
 
 import type { FormEvent } from 'react';
@@ -40,10 +42,12 @@ interface ItemRow {
   networkId: string;
   seriesId: string;
   title: string;
+  description?: string | null;
   format: ContentFormat;
   audience: ContentAudience;
   isPublished: boolean;
   isFreePreview: boolean;
+  body?: unknown;
   ctas?: CtaRow[];
 }
 
@@ -56,12 +60,21 @@ interface SeriesFormState {
   status: PublishStatus;
 }
 
+type BodyMode = 'structured' | 'raw';
+
 interface ItemFormState {
   title: string;
   description: string;
   format: ContentFormat;
   audience: ContentAudience;
-  bodyJson: string;
+  bodyMode: BodyMode;
+  markdown: string;
+  documentUrl: string;
+  videoUrl: string;
+  audioUrl: string;
+  webinarUrl: string;
+  quizId: string;
+  rawBodyJson: string;
   isFreePreview: boolean;
   status: PublishStatus;
 }
@@ -90,10 +103,156 @@ function emptyItemForm(): ItemFormState {
     description: '',
     format: ContentFormat.Article,
     audience: ContentAudience.Client,
-    bodyJson: JSON.stringify({ markdown: '' }, null, 2),
+    bodyMode: 'structured',
+    markdown: '',
+    documentUrl: '',
+    videoUrl: '',
+    audioUrl: '',
+    webinarUrl: '',
+    quizId: '',
+    rawBodyJson: '',
     isFreePreview: true,
     status: 'draft',
   };
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readStringField(body: Record<string, unknown>, key: string): string {
+  const v = body[key];
+  return typeof v === 'string' ? v : '';
+}
+
+/**
+ * Заполнить структурированные поля формы из body существующего материала.
+ * Если форма body не подходит ни под один из known-shape'ов выбранного формата,
+ * переключаемся в Raw-режим, чтобы ничего не потерять при редактировании.
+ */
+function itemFormFromRow(row: ItemRow): ItemFormState {
+  const base: ItemFormState = {
+    ...emptyItemForm(),
+    title: row.title,
+    description: row.description ?? '',
+    format: row.format,
+    audience: row.audience,
+    isFreePreview: row.isFreePreview,
+    status: row.isPublished ? 'published' : 'draft',
+  };
+
+  const body = row.body;
+  if (!isPlainObject(body)) {
+    if (body !== undefined && body !== null) {
+      return { ...base, bodyMode: 'raw', rawBodyJson: JSON.stringify(body, null, 2) };
+    }
+    return base;
+  }
+
+  switch (row.format) {
+    case ContentFormat.Article: {
+      if (typeof body['markdown'] === 'string') {
+        return {
+          ...base,
+          markdown: readStringField(body, 'markdown'),
+          documentUrl: readStringField(body, 'documentUrl'),
+        };
+      }
+      break;
+    }
+    case ContentFormat.Video: {
+      if (typeof body['videoUrl'] === 'string') {
+        return { ...base, videoUrl: readStringField(body, 'videoUrl') };
+      }
+      break;
+    }
+    case ContentFormat.Audio: {
+      if (typeof body['audioUrl'] === 'string') {
+        return { ...base, audioUrl: readStringField(body, 'audioUrl') };
+      }
+      break;
+    }
+    case ContentFormat.Webinar: {
+      if (typeof body['webinarUrl'] === 'string') {
+        return { ...base, webinarUrl: readStringField(body, 'webinarUrl') };
+      }
+      break;
+    }
+    case ContentFormat.Quiz: {
+      if (typeof body['quizId'] === 'string') {
+        return { ...base, quizId: readStringField(body, 'quizId') };
+      }
+      break;
+    }
+  }
+
+  return { ...base, bodyMode: 'raw', rawBodyJson: JSON.stringify(body, null, 2) };
+}
+
+/**
+ * Собирает payload поля `body` для API.
+ * В структурированном режиме — фиксированная по формату форма; в raw-режиме — JSON.parse,
+ * который должен дать объект (массивы/примитивы не принимаем, чтобы соответствовать ожиданиям бэка).
+ */
+function buildItemBody(form: ItemFormState): { ok: true; body: Record<string, unknown> } | { ok: false; error: string } {
+  if (form.bodyMode === 'raw') {
+    const raw = form.rawBodyJson.trim();
+    if (raw === '') {
+      return { ok: false, error: 'В расширенном режиме тело материала не должно быть пустым' };
+    }
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!isPlainObject(parsed)) {
+        return { ok: false, error: 'Тело материала должно быть JSON-объектом' };
+      }
+      return { ok: true, body: parsed };
+    } catch {
+      return { ok: false, error: 'Тело материала должно быть валидным JSON' };
+    }
+  }
+
+  switch (form.format) {
+    case ContentFormat.Article: {
+      const markdown = form.markdown.trim();
+      if (markdown === '') return { ok: false, error: 'Заполните текст материала (Markdown)' };
+      const documentUrl = form.documentUrl.trim();
+      const body: Record<string, unknown> = { markdown };
+      if (documentUrl !== '') body['documentUrl'] = documentUrl;
+      return { ok: true, body };
+    }
+    case ContentFormat.Video: {
+      const videoUrl = form.videoUrl.trim();
+      if (videoUrl === '') return { ok: false, error: 'Укажите ссылку на видео' };
+      return { ok: true, body: { videoUrl } };
+    }
+    case ContentFormat.Audio: {
+      const audioUrl = form.audioUrl.trim();
+      if (audioUrl === '') return { ok: false, error: 'Укажите ссылку на аудио' };
+      return { ok: true, body: { audioUrl } };
+    }
+    case ContentFormat.Webinar: {
+      const webinarUrl = form.webinarUrl.trim();
+      if (webinarUrl === '') return { ok: false, error: 'Укажите ссылку на трансляцию' };
+      return { ok: true, body: { webinarUrl } };
+    }
+    case ContentFormat.Quiz: {
+      const quizId = form.quizId.trim();
+      if (quizId === '') return { ok: false, error: 'Укажите ID квиза' };
+      return { ok: true, body: { quizId } };
+    }
+    default:
+      return { ok: false, error: 'Неподдерживаемый формат материала' };
+  }
+}
+
+/**
+ * При переключении в raw-режим показываем сериализованную версию структурированных полей
+ * (если они валидны для текущего формата). Иначе — пустая строка.
+ */
+function structuredBodyPreview(form: ItemFormState): string {
+  const built = buildItemBody({ ...form, bodyMode: 'structured' });
+  if (!built.ok) return '';
+  return JSON.stringify(built.body, null, 2);
 }
 
 function emptyCtaForm(): CtaFormState {
@@ -179,7 +338,7 @@ export function ContentFunnelPage() {
     setError(null);
     try {
       const data = await apiRequest<{ items: ItemRow[] }>(
-        `/admin/education/items?seriesId=${encodeURIComponent(seriesId)}&take=200`,
+        `/admin/education/items?seriesId=${encodeURIComponent(seriesId)}&take=100`,
       );
       setItems(data.items);
     } catch (e) {
@@ -251,11 +410,9 @@ export function ContentFunnelPage() {
   async function submitItem(ev: FormEvent) {
     ev.preventDefault();
     if (!itemModal || !networkId || !seriesId) return;
-    let body: unknown;
-    try {
-      body = JSON.parse(itemModal.form.bodyJson);
-    } catch {
-      setError('Поле body должно быть валидным JSON');
+    const built = buildItemBody(itemModal.form);
+    if (!built.ok) {
+      setError(built.error);
       return;
     }
     const payload = {
@@ -265,7 +422,7 @@ export function ContentFunnelPage() {
       description: itemModal.form.description.trim() || undefined,
       format: itemModal.form.format,
       audience: itemModal.form.audience,
-      body,
+      body: built.body,
       isFreePreview: itemModal.form.isFreePreview,
       status: itemModal.form.status,
     };
@@ -431,6 +588,9 @@ export function ContentFunnelPage() {
                     <td>
                       <button
                         type="button"
+                        className="action-icon-btn"
+                        aria-label="Изменить серию"
+                        title="Изменить"
                         onClick={() =>
                           setSeriesModal({
                             mode: 'edit',
@@ -446,7 +606,7 @@ export function ContentFunnelPage() {
                           })
                         }
                       >
-                        Изменить
+                        <EditIcon />
                       </button>
                     </td>
                   ) : null}
@@ -493,23 +653,18 @@ export function ContentFunnelPage() {
                       <span className="inline-actions">
                         <button
                           type="button"
+                          className="action-icon-btn"
+                          aria-label="Изменить элемент"
+                          title="Изменить"
                           onClick={() =>
                             setItemModal({
                               mode: 'edit',
                               id: row.id,
-                              form: {
-                                title: row.title,
-                                description: '',
-                                format: row.format,
-                                audience: row.audience,
-                                bodyJson: JSON.stringify({ markdown: '' }, null, 2),
-                                isFreePreview: row.isFreePreview,
-                                status: row.isPublished ? 'published' : 'draft',
-                              },
+                              form: itemFormFromRow(row),
                             })
                           }
                         >
-                          Изменить
+                          <EditIcon />
                         </button>
                         {!row.isPublished ? (
                           <button type="button" className="primary" onClick={() => void publishItem(row.id)}>
@@ -651,6 +806,18 @@ export function ContentFunnelPage() {
                 />
               </div>
               <div className="field">
+                <label htmlFor="item-description">Краткое описание</label>
+                <textarea
+                  id="item-description"
+                  rows={2}
+                  placeholder="1–2 предложения для карточки в ленте"
+                  value={itemModal.form.description}
+                  onChange={(ev) =>
+                    setItemModal({ ...itemModal, form: { ...itemModal.form, description: ev.target.value } })
+                  }
+                />
+              </div>
+              <div className="field">
                 <label htmlFor="item-format">Формат</label>
                 <select
                   id="item-format"
@@ -659,11 +826,11 @@ export function ContentFunnelPage() {
                     setItemModal({ ...itemModal, form: { ...itemModal.form, format: ev.target.value as ContentFormat } })
                   }
                 >
-                  <option value={ContentFormat.Article}>ARTICLE</option>
-                  <option value={ContentFormat.Video}>VIDEO</option>
-                  <option value={ContentFormat.Audio}>AUDIO</option>
-                  <option value={ContentFormat.Webinar}>WEBINAR</option>
-                  <option value={ContentFormat.Quiz}>QUIZ</option>
+                  <option value={ContentFormat.Article}>Статья (Markdown)</option>
+                  <option value={ContentFormat.Video}>Видео (URL)</option>
+                  <option value={ContentFormat.Audio}>Аудио (URL)</option>
+                  <option value={ContentFormat.Webinar}>Вебинар (URL)</option>
+                  <option value={ContentFormat.Quiz}>Квиз (UUID)</option>
                 </select>
               </div>
               <div className="field">
@@ -683,15 +850,150 @@ export function ContentFunnelPage() {
                   <option value={ContentAudience.Everyone}>Все</option>
                 </select>
               </div>
+              {itemModal.form.bodyMode === 'structured' ? (
+                <>
+                  {itemModal.form.format === ContentFormat.Article ? (
+                    <>
+                      <div className="field">
+                        <label htmlFor="item-markdown">Текст материала</label>
+                        <MarkdownEditor
+                          id="item-markdown"
+                          rows={10}
+                          placeholder={'# Заголовок\n\nТекст в формате Markdown…'}
+                          ariaLabel="Текст материала в формате Markdown"
+                          value={itemModal.form.markdown}
+                          onChange={(next) =>
+                            setItemModal({ ...itemModal, form: { ...itemModal.form, markdown: next } })
+                          }
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor="item-document-url">Документ по ссылке (необязательно)</label>
+                        <input
+                          id="item-document-url"
+                          type="url"
+                          placeholder="https://…/material.pdf — откроется внутри приложения"
+                          value={itemModal.form.documentUrl}
+                          onChange={(ev) =>
+                            setItemModal({
+                              ...itemModal,
+                              form: { ...itemModal.form, documentUrl: ev.target.value },
+                            })
+                          }
+                        />
+                        <p style={{ color: 'var(--muted)', fontSize: '0.8rem', margin: '0.35rem 0 0' }}>
+                          PDF или страница с материалом. Клиент увидит документ в приложении, без перехода в Safari/Chrome.
+                        </p>
+                      </div>
+                    </>
+                  ) : null}
+
+                  {itemModal.form.format === ContentFormat.Video ? (
+                    <div className="field">
+                      <label htmlFor="item-video-url">Ссылка на видео (URL)</label>
+                      <input
+                        id="item-video-url"
+                        type="url"
+                        placeholder="https://…/video.mp4"
+                        value={itemModal.form.videoUrl}
+                        onChange={(ev) =>
+                          setItemModal({ ...itemModal, form: { ...itemModal.form, videoUrl: ev.target.value } })
+                        }
+                      />
+                      <p style={{ color: 'var(--muted)', fontSize: '0.8rem', margin: '0.35rem 0 0' }}>
+                        Прямая ссылка на mp4 / HLS-плейлист либо страницу с видеоплеером.
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {itemModal.form.format === ContentFormat.Audio ? (
+                    <div className="field">
+                      <label htmlFor="item-audio-url">Ссылка на аудио (URL)</label>
+                      <input
+                        id="item-audio-url"
+                        type="url"
+                        placeholder="https://…/audio.mp3"
+                        value={itemModal.form.audioUrl}
+                        onChange={(ev) =>
+                          setItemModal({ ...itemModal, form: { ...itemModal.form, audioUrl: ev.target.value } })
+                        }
+                      />
+                    </div>
+                  ) : null}
+
+                  {itemModal.form.format === ContentFormat.Webinar ? (
+                    <div className="field">
+                      <label htmlFor="item-webinar-url">Ссылка на трансляцию (URL)</label>
+                      <input
+                        id="item-webinar-url"
+                        type="url"
+                        placeholder="https://…/webinar"
+                        value={itemModal.form.webinarUrl}
+                        onChange={(ev) =>
+                          setItemModal({ ...itemModal, form: { ...itemModal.form, webinarUrl: ev.target.value } })
+                        }
+                      />
+                    </div>
+                  ) : null}
+
+                  {itemModal.form.format === ContentFormat.Quiz ? (
+                    <div className="field">
+                      <label htmlFor="item-quiz-id">ID квиза</label>
+                      <input
+                        id="item-quiz-id"
+                        placeholder="UUID диагностического квиза"
+                        value={itemModal.form.quizId}
+                        onChange={(ev) =>
+                          setItemModal({ ...itemModal, form: { ...itemModal.form, quizId: ev.target.value } })
+                        }
+                      />
+                      <p style={{ color: 'var(--muted)', fontSize: '0.8rem', margin: '0.35rem 0 0' }}>
+                        ID существующего квиза из раздела «Диагностический квиз».
+                      </p>
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <div className="field">
+                  <label htmlFor="item-body-raw">Тело материала (JSON)</label>
+                  <textarea
+                    id="item-body-raw"
+                    rows={8}
+                    className="mono"
+                    value={itemModal.form.rawBodyJson}
+                    onChange={(ev) =>
+                      setItemModal({ ...itemModal, form: { ...itemModal.form, rawBodyJson: ev.target.value } })
+                    }
+                  />
+                  <p style={{ color: 'var(--muted)', fontSize: '0.8rem', margin: '0.35rem 0 0' }}>
+                    Расширенный режим: произвольный JSON-объект. Используйте, только если требуется нестандартная
+                    форма данных.
+                  </p>
+                </div>
+              )}
+
               <div className="field">
-                <label htmlFor="item-body">body (JSON)</label>
-                <textarea
-                  id="item-body"
-                  rows={8}
-                  className="mono"
-                  value={itemModal.form.bodyJson}
-                  onChange={(ev) => setItemModal({ ...itemModal, form: { ...itemModal.form, bodyJson: ev.target.value } })}
-                />
+                <label className="modal-toggle">
+                  <input
+                    type="checkbox"
+                    checked={itemModal.form.bodyMode === 'raw'}
+                    onChange={(ev) => {
+                      const nextMode: BodyMode = ev.target.checked ? 'raw' : 'structured';
+                      setItemModal({
+                        ...itemModal,
+                        form: {
+                          ...itemModal.form,
+                          bodyMode: nextMode,
+                          rawBodyJson:
+                            nextMode === 'raw' && itemModal.form.rawBodyJson.trim() === ''
+                              ? structuredBodyPreview(itemModal.form)
+                              : itemModal.form.rawBodyJson,
+                        },
+                      });
+                    }}
+                  />{' '}
+                  Расширенный режим (JSON)
+                </label>
               </div>
               <div className="field">
                 <label className="modal-toggle">

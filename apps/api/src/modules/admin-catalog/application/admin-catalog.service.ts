@@ -150,6 +150,25 @@ export class AdminCatalogService {
         orderBy: { name: 'asc' },
       });
     }
+    if (user.role === UserRole.Specialist) {
+      const profile = await this.prisma.specialistProfile.findUnique({
+        where: { userId: user.sub },
+        select: {
+          studioId: true,
+          studios: { select: { studioId: true } },
+        },
+      });
+      if (!profile) {
+        return [];
+      }
+      const ids = [...new Set([profile.studioId, ...profile.studios.map((item) => item.studioId)])];
+      const where: Prisma.StudioWhereInput = { id: { in: ids } };
+      if (q.networkId) where.networkId = q.networkId;
+      return this.prisma.studio.findMany({
+        where,
+        orderBy: [{ name: 'asc' }],
+      });
+    }
     const where: Prisma.StudioWhereInput = {};
     if (q.networkId) where.networkId = q.networkId;
     return this.prisma.studio.findMany({
@@ -164,6 +183,19 @@ export class AdminCatalogService {
     if (user.role === UserRole.StudioAdmin) {
       const { studioId } = await this.getStudioAdminStudioNetwork(user.sub);
       if (studioId !== id) throw new ForbiddenException();
+    }
+    if (user.role === UserRole.Specialist) {
+      const profile = await this.prisma.specialistProfile.findUnique({
+        where: { userId: user.sub },
+        select: {
+          studioId: true,
+          studios: { select: { studioId: true } },
+        },
+      });
+      if (!profile) throw new ForbiddenException();
+      const allowed =
+        profile.studioId === id || profile.studios.some((item) => item.studioId === id);
+      if (!allowed) throw new ForbiddenException();
     }
     return row;
   }

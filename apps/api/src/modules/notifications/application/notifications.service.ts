@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   NotificationChannel,
   NotificationStatus,
+  NotificationTemplateKey,
   NotificationType,
   SmsProvider as SharedSmsProvider,
   UserRole,
@@ -14,8 +15,10 @@ import {
 
 import {
   NOTIFICATIONS_QUEUE,
+  NOTIFICATIONS_PUSH_JOB,
   NOTIFICATIONS_SMS_JOB,
   REMINDER_JOB_ID_PREFIX,
+  type SendPushJobData,
   type SendSmsJobData,
 } from './notifications.jobs';
 import { type CreateNotificationTemplateDto } from '../presentation/dto/create-notification-template.dto';
@@ -31,9 +34,7 @@ import type { NotificationsConfig } from '../../../config/notifications.config';
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 import type { Prisma } from '@prisma/client';
-import type {
-  NotificationTemplateKey,
-  PushProvider} from '@srs/shared-types';
+import type { PushProvider } from '@srs/shared-types';
 import type { Job, Queue } from 'bullmq';
 
 @Injectable()
@@ -43,7 +44,8 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
-    @InjectQueue(NOTIFICATIONS_QUEUE) private readonly notificationsQueue: Queue<SendSmsJobData>,
+    @InjectQueue(NOTIFICATIONS_QUEUE)
+    private readonly notificationsQueue: Queue<SendSmsJobData | SendPushJobData>,
   ) {
     this.queueName = this.configService.getOrThrow<NotificationsConfig>('notifications').queueName;
   }
@@ -240,8 +242,8 @@ export class NotificationsService {
     const policies = await this.prisma.reminderPolicy.findMany({
       where: {
         networkId: appointment.studio.networkId,
-        channel: NotificationChannel.Sms,
         isActive: true,
+        channel: { in: [NotificationChannel.Sms, NotificationChannel.Push] },
       },
       orderBy: { offsetMinutesBefore: 'desc' },
     });
@@ -262,7 +264,7 @@ export class NotificationsService {
         where: {
           networkId: appointment.studio.networkId,
           key: policy.templateKey,
-          channel: NotificationChannel.Sms,
+          channel: policy.channel,
           locale: 'ru',
           isActive: true,
         },
@@ -293,32 +295,62 @@ export class NotificationsService {
 
       const pref = await this.prisma.notificationPreference.findUnique({
         where: { userId: appointment.client.id },
-        select: { reminderSmsEnabled: true },
+        select: { reminderSmsEnabled: true, reminderPushEnabled: true },
       });
-      // Если клиент отключил SMS-напоминания — не ставим задачу вообще
-      if (pref !== null && pref.reminderSmsEnabled === false) {
-        continue;
+
+      if (policy.channel === NotificationChannel.Sms) {
+        // Если клиент отключил SMS-напоминания — не ставим задачу вообще
+        if (pref !== null && pref.reminderSmsEnabled === false) {
+          continue;
+        }
+        await this.enqueueSmsJob(
+          {
+            userId: appointment.client.id,
+            type: NotificationType.AppointmentReminder,
+            templateKey: policy.templateKey as NotificationTemplateKey,
+            title,
+            body,
+            recipient: appointment.client.phone,
+            senderId: template.senderId ?? undefined,
+            entityType: 'appointment',
+            entityId: appointment.id,
+            idempotencyKey,
+            reminderPolicyId: policy.id,
+            scheduledFor: scheduledAt.toISOString(),
+          },
+          {
+            delayMs,
+            jobId: this.buildReminderJobId(appointment.id, policy.id, appointment.startsAt),
+          },
+        );
+      } else if (policy.channel === NotificationChannel.Push) {
+        if (pref !== null && pref.reminderPushEnabled === false) {
+          continue;
+        }
+        await this.enqueuePushJob(
+          {
+            userId: appointment.client.id,
+            type: NotificationType.AppointmentReminder,
+            templateKey: policy.templateKey as NotificationTemplateKey,
+            title,
+            body,
+            payload: {
+              entityType: 'appointment',
+              entityId: appointment.id,
+            },
+            entityType: 'appointment',
+            entityId: appointment.id,
+            idempotencyKey,
+            reminderPolicyId: policy.id,
+            scheduledFor: scheduledAt.toISOString(),
+          },
+          {
+            delayMs,
+            jobId: this.buildReminderJobId(appointment.id, policy.id, appointment.startsAt),
+          },
+        );
       }
-      await this.enqueueSmsJob(
-        {
-          userId: appointment.client.id,
-          type: NotificationType.AppointmentReminder,
-          templateKey: policy.templateKey as NotificationTemplateKey,
-          title,
-          body,
-          recipient: appointment.client.phone,
-          senderId: template.senderId ?? undefined,
-          entityType: 'appointment',
-          entityId: appointment.id,
-          idempotencyKey,
-          reminderPolicyId: policy.id,
-          scheduledFor: scheduledAt.toISOString(),
-        },
-        {
-          delayMs,
-          jobId: this.buildReminderJobId(appointment.id, policy.id, appointment.startsAt),
-        },
-      );
+
       scheduled += 1;
     }
 
@@ -331,6 +363,104 @@ export class NotificationsService {
     const appointmentJobs = jobs.filter((job) => String(job.id).startsWith(prefix));
     await Promise.all(appointmentJobs.map((job) => job.remove()));
     return { removed: appointmentJobs.length };
+  }
+
+  /**
+   * Ставит в очередь PUSH и SMS о новом/обновлённом плане лечения (активный план).
+   */
+  async notifyClientTreatmentPlan(params: {
+    clientUserId: string;
+    planId: string;
+    studioId: string;
+    planTitle: string;
+    /** Суффикс для idempotency-ключа (например `created` или `updated-173567890`). */
+    dedupeSuffix: string;
+  }): Promise<{ pushJobId: string | number | undefined; smsJobId: string | number | undefined }> {
+    const [client, studio] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: params.clientUserId },
+        select: { id: true, firstName: true, lastName: true, phone: true },
+      }),
+      this.prisma.studio.findUnique({
+        where: { id: params.studioId },
+        select: { id: true, name: true, networkId: true },
+      }),
+    ]);
+    if (!client || !studio) {
+      return { pushJobId: undefined, smsJobId: undefined };
+    }
+
+    const templateData: Record<string, string> = {
+      'client.firstName': client.firstName,
+      'client.lastName': client.lastName,
+      'studio.name': studio.name,
+      'treatmentPlan.title': params.planTitle,
+    };
+
+    const templateKey = NotificationTemplateKey.TreatmentPlanReady;
+    const [pushTemplate, smsTemplate] = await Promise.all([
+      this.prisma.notificationTemplate.findFirst({
+        where: {
+          networkId: studio.networkId,
+          key: templateKey,
+          channel: NotificationChannel.Push,
+          locale: 'ru',
+          isActive: true,
+        },
+      }),
+      this.prisma.notificationTemplate.findFirst({
+        where: {
+          networkId: studio.networkId,
+          key: templateKey,
+          channel: NotificationChannel.Sms,
+          locale: 'ru',
+          isActive: true,
+        },
+      }),
+    ]);
+
+    const defaultTitle = 'План лечения';
+    const defaultBody = `${params.planTitle}. Откройте приложение, раздел «План лечения».`;
+
+    const pushTitle = pushTemplate
+      ? this.renderTemplate(pushTemplate.subject ?? defaultTitle, templateData)
+      : defaultTitle;
+    const pushBody = pushTemplate ? this.renderTemplate(pushTemplate.body, templateData) : defaultBody;
+    const smsBody = smsTemplate ? this.renderTemplate(smsTemplate.body, templateData) : defaultBody;
+    const smsTitle = smsTemplate ? this.renderTemplate(smsTemplate.subject ?? '', templateData) : '';
+
+    const pushIdempotencyKey = `treatment-plan-${params.planId}-push-${params.dedupeSuffix}`;
+    const smsIdempotencyKey = `treatment-plan-${params.planId}-sms-${params.dedupeSuffix}`;
+
+    const pushJob = await this.enqueuePushJob({
+      userId: client.id,
+      type: NotificationType.TreatmentPlanCreated,
+      templateKey,
+      title: pushTitle,
+      body: pushBody,
+      payload: {
+        entityType: 'treatment_plan',
+        entityId: params.planId,
+      },
+      entityType: 'treatment_plan',
+      entityId: params.planId,
+      idempotencyKey: pushIdempotencyKey,
+    });
+
+    const smsJob = await this.enqueueSmsJob({
+      userId: client.id,
+      type: NotificationType.TreatmentPlanCreated,
+      templateKey,
+      title: smsTitle,
+      body: smsBody,
+      recipient: client.phone,
+      senderId: smsTemplate?.senderId ?? undefined,
+      entityType: 'treatment_plan',
+      entityId: params.planId,
+      idempotencyKey: smsIdempotencyKey,
+    });
+
+    return { pushJobId: pushJob.id, smsJobId: smsJob.id };
   }
 
   async getPreference(actor: JwtAccessPayload, userId: string) {
@@ -516,8 +646,25 @@ export class NotificationsService {
       delayMs?: number;
       jobId?: string;
     },
-  ): Promise<Job<SendSmsJobData>> {
+  ): Promise<Job<SendSmsJobData | SendPushJobData>> {
     return this.notificationsQueue.add(NOTIFICATIONS_SMS_JOB, data, {
+      jobId: options?.jobId ?? data.idempotencyKey,
+      delay: options?.delayMs,
+      removeOnComplete: 1000,
+      removeOnFail: 1000,
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 1000 },
+    });
+  }
+
+  private async enqueuePushJob(
+    data: SendPushJobData,
+    options?: {
+      delayMs?: number;
+      jobId?: string;
+    },
+  ): Promise<Job<SendSmsJobData | SendPushJobData>> {
+    return this.notificationsQueue.add(NOTIFICATIONS_PUSH_JOB, data, {
       jobId: options?.jobId ?? data.idempotencyKey,
       delay: options?.delayMs,
       removeOnComplete: 1000,

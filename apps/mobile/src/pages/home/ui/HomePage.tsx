@@ -19,6 +19,8 @@ import { useHomeScreenData } from '@/pages/home/model/useHomeScreenData'
 import { CancelAppointmentSheet } from '@/pages/home/ui/CancelAppointmentSheet'
 import { NextAppointmentCard } from './NextAppointmentCard'
 import { ApiError } from '@/shared/api/api-error'
+import { USER_MUTATION_OFFLINE } from '@/shared/api/user-facing-errors'
+import { fetchIsOffline } from '@/shared/network/connectivity'
 import { LeafLogo } from '@/shared/ui/icons/LeafLogo'
 import { ConcernIcon } from '@/shared/ui/icons/concerns/ConcernIcon'
 import { SafeAreaPadding } from '@/shared/ui/safe-area'
@@ -29,6 +31,7 @@ export function HomePage() {
   const {
     loading,
     error,
+    emptyMessage,
     reload,
     firstName,
     faq,
@@ -53,6 +56,10 @@ export function HomePage() {
   const handleConfirmCancelAppointment = useCallback(
     async (reason: string | undefined) => {
       if (!appointmentId) return;
+      if (await fetchIsOffline()) {
+        Alert.alert('Ошибка', USER_MUTATION_OFFLINE);
+        return;
+      }
       setCancelSubmitting(true);
       try {
         await cancelAppointmentByClient(
@@ -95,7 +102,15 @@ export function HomePage() {
       </SafeAreaPadding>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {loading ? (
+        {emptyMessage != null ? (
+          <View style={styles.emptyWrap} lightColor="transparent" darkColor="transparent">
+            <Text style={styles.emptyText} lightColor="#1A1A2E" darkColor="#FFFFFF">
+              {emptyMessage}
+            </Text>
+          </View>
+        ) : null}
+
+        {emptyMessage == null && loading ? (
           <View style={styles.bannerRow} lightColor="transparent" darkColor="transparent">
             <ActivityIndicator />
             <Text style={styles.bannerText} lightColor="rgba(11,27,20,0.55)" darkColor="rgba(255,255,255,0.55)">
@@ -104,21 +119,26 @@ export function HomePage() {
           </View>
         ) : null}
 
-        {error ? (
-          <Pressable onPress={() => void reload()} style={({ pressed }) => [styles.errorBanner, pressed && styles.pressed]}>
+        {emptyMessage == null && error ? (
+          <Pressable
+            onPress={() => void reload()}
+            style={({ pressed }) => [styles.errorBanner, pressed && styles.pressed]}
+          >
             <Text style={styles.errorBannerText} lightColor="#93000A" darkColor="#FFB4A9">
               {error}. Нажмите, чтобы повторить.
             </Text>
           </Pressable>
         ) : null}
 
+        {emptyMessage == null ? (
+          <>
         <View style={styles.hero} lightColor="transparent" darkColor="transparent">
           <Text style={styles.greeting}>
             Привет, {firstName.trim() ? firstName.trim() : 'друг'}{' '}
             <Text style={styles.wave} />
           </Text>
           <Text style={styles.heroSub} lightColor="rgba(11,27,20,0.65)" darkColor="rgba(255,255,255,0.65)">
-            Добро пожаловать в ваше личное пространство{'\n'}заботы.
+            Добро пожаловать в ваше личное пространство заботы.
           </Text>
         </View>
 
@@ -132,7 +152,7 @@ export function HomePage() {
         </Pressable>
 
         <View style={styles.section} lightColor="transparent" darkColor="transparent">
-          <Text style={styles.sectionTitle}>Ближайшая запись</Text>
+          <Text style={styles.sectionTitle}>Вы на этапе восстановления. Ваша ближайшая запись</Text>
           <NextAppointmentCard
             appointment={appointmentPresentation}
             cancelSubmitting={cancelSubmitting}
@@ -221,6 +241,8 @@ export function HomePage() {
             </View>
           </View>
         ) : null}
+          </>
+        ) : null}
       </ScrollView>
 
       <CancelAppointmentSheet
@@ -288,6 +310,18 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 14,
     paddingBottom: 24,
+  },
+  emptyWrap: {
+    paddingVertical: 48,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '600',
+    textAlign: 'center',
+    fontFamily: 'Inter_600SemiBold',
   },
   bannerRow: {
     flexDirection: 'row',
@@ -454,7 +488,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(45,106,79,0.10)',
-    marginBottom: 12,
+    marginBottom: 5,
   },
   specCardName: {
     fontSize: 16,

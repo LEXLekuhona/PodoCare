@@ -1,6 +1,19 @@
 /* eslint-disable import/order */
-import { Body, Controller, ForbiddenException, Get, Patch, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Patch,
+  Post,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 
 import { CurrentUser } from '../../auth/infrastructure/current-user.decorator';
 import { JwtAuthGuard } from '../../auth/infrastructure/jwt-auth.guard';
@@ -9,8 +22,8 @@ import { JwtAuthGuard } from '../../auth/infrastructure/jwt-auth.guard';
 import { MeService } from '../application/me.service';
 // Nest ValidationPipe relies on runtime metadata for DTO classes.
 // `import type` breaks `design:paramtypes`, causing whitelist validation to reject all properties.
-import { RecordConsentsDto } from './dto/record-consents.dto';
-import { UpdateMeDto } from './dto/update-me.dto';
+import type { RecordConsentsDto } from './dto/record-consents.dto';
+import type { UpdateMeDto } from './dto/update-me.dto';
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 
 @ApiTags('me')
@@ -53,6 +66,23 @@ export class MeController {
   @ApiOperation({ summary: 'Обновление профиля текущего пользователя.' })
   patchMe(@CurrentUser() user: JwtAccessPayload, @Body() body: UpdateMeDto) {
     return this.meService.update(user.sub, body);
+  }
+
+  @Post('avatar')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Загрузить фото профиля (JPEG/PNG/WebP, до 3 МБ).' })
+  uploadAvatar(
+    @CurrentUser() user: JwtAccessPayload,
+    @UploadedFile()
+    file:
+      | { originalname: string; mimetype: string; buffer: Buffer; size: number }
+      | undefined,
+    @Req() req: Request,
+  ) {
+    const proto = String(req.headers['x-forwarded-proto'] ?? req.protocol).split(',')[0]?.trim() || req.protocol;
+    const host = req.get('host') ?? 'localhost';
+    return this.meService.uploadAvatar(user.sub, file, `${proto}://${host}`);
   }
 
   @Get('consents')

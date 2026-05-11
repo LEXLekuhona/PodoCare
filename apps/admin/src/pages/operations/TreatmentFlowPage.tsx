@@ -1,33 +1,16 @@
-import { UserRole } from '@srs/shared-types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { ClinicalVisitPickerFields } from './ClinicalVisitPickerFields';
+import { useClinicalVisitPicker } from './useClinicalVisitPicker';
 import { ApiError, apiRequest } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
+import { canUseClinicalOperations } from '../../lib/roles';
 
-type StudioRow = {
-  id: string;
-  name: string;
-  city: string;
-};
 
 type ServiceRow = {
   id: string;
   name: string;
   isActive: boolean;
-};
-
-type AppointmentRow = {
-  id: string;
-  studioId: string;
-  clientUserId: string | null;
-  client?: {
-    id: string;
-    firstName: string;
-    lastName: string;
-  } | null;
-  specialistId: string;
-  startsAt: string;
-  status: string;
 };
 
 type PlanStepRow = {
@@ -76,19 +59,19 @@ type PlanForm = {
   comment: string;
 };
 
-function appointmentStatusRu(status: string): string {
-  const map: Record<string, string> = {
-    PENDING: 'Ожидает подтверждения',
-    CONFIRMED: 'Подтверждён',
-    IN_PROGRESS: 'Идёт приём',
-    COMPLETED: 'Завершён',
-    NO_SHOW: 'Не явился',
-    CANCELLED_BY_CLIENT: 'Отменён клиентом',
-    CANCELLED_BY_STUDIO: 'Отменён студией',
-    CANCELLED: 'Отменён',
-  };
-  return map[status] ?? status;
-}
+type MedicalCardBasics = {
+  birthDate: string | null;
+  allergies: string | null;
+  chronicConditions: string | null;
+  contraindications: string | null;
+};
+
+type MedicalCardForm = {
+  birthDate: string;
+  allergies: string;
+  chronicConditions: string;
+  contraindications: string;
+};
 
 function planStatusRu(status: PlanForm['status']): string {
   const map: Record<PlanForm['status'], string> = {
@@ -121,6 +104,15 @@ function emptyPlanForm(): PlanForm {
     stepsText: '',
     reason: '',
     comment: '',
+  };
+}
+
+function emptyMedicalCardForm(): MedicalCardForm {
+  return {
+    birthDate: '',
+    allergies: '',
+    chronicConditions: '',
+    contraindications: '',
   };
 }
 
@@ -159,77 +151,38 @@ function planToForm(plan: TreatmentPlanRow): PlanForm {
   };
 }
 
-function canUseClinicalFlow(role: UserRole | undefined): boolean {
-  return (
-    role === UserRole.Specialist ||
-    role === UserRole.StudioAdmin ||
-    role === UserRole.NetworkOwner ||
-    role === UserRole.SuperAdmin
-  );
-}
-
 export function TreatmentFlowPage() {
   const { user } = useAuth();
-  const allowed = canUseClinicalFlow(user?.role);
-  const [studios, setStudios] = useState<StudioRow[]>([]);
-  const [studioId, setStudioId] = useState('');
+  const allowed = user ? canUseClinicalOperations(user.role) : false;
+  const {
+    studios,
+    studioId,
+    setStudioId,
+    appointments,
+    selectedAppointmentId,
+    setSelectedAppointmentId,
+    selectedAppointment,
+    loading,
+    error,
+    setError,
+  } = useClinicalVisitPicker({ clientFilter: 'app' });
+
   const [services, setServices] = useState<ServiceRow[]>([]);
   const [serviceFilter, setServiceFilter] = useState('');
-  const [appointments, setAppointments] = useState<AppointmentRow[]>([]);
-  const [selectedAppointmentId, setSelectedAppointmentId] = useState('');
   const [plans, setPlans] = useState<TreatmentPlanRow[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState('');
   const [protocolForm, setProtocolForm] = useState<ProtocolForm>(emptyProtocolForm);
   const [planForm, setPlanForm] = useState<PlanForm>(emptyPlanForm);
-  const [loading, setLoading] = useState(true);
   const [savingProtocol, setSavingProtocol] = useState(false);
   const [savingPlan, setSavingPlan] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [savingMedicalCard, setSavingMedicalCard] = useState(false);
+  const [medicalCardLoading, setMedicalCardLoading] = useState(false);
+  const [medicalCardForm, setMedicalCardForm] = useState<MedicalCardForm>(emptyMedicalCardForm);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const selectedAppointment = useMemo(
-    () => appointments.find((item) => item.id === selectedAppointmentId) ?? null,
-    [appointments, selectedAppointmentId],
-  );
   const selectedPlan = useMemo(() => plans.find((item) => item.id === selectedPlanId) ?? null, [plans, selectedPlanId]);
 
   const relevantStudioId = selectedAppointment?.studioId ?? (studioId.trim() ? studioId.trim() : null);
-
-  const loadStudios = useCallback(async () => {
-    try {
-      const data = await apiRequest<StudioRow[]>('/admin/catalog/studios');
-      setStudios(data);
-      if (!studioId && data[0]) setStudioId(data[0].id);
-    } catch {
-      setStudios([]);
-    }
-  }, [studioId]);
-
-  const loadAppointments = useCallback(async () => {
-    if (!allowed) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const from = new Date(Date.now() - 1000 * 60 * 60 * 24 * 14).toISOString();
-      const to = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString();
-      const q = new URLSearchParams();
-      if (studioId.trim()) q.set('studioId', studioId.trim());
-      q.set('from', from);
-      q.set('to', to);
-      const rows = await apiRequest<AppointmentRow[]>(`/appointments?${q.toString()}`);
-      const withClients = rows.filter((item) => item.clientUserId);
-      setAppointments(withClients);
-      if (!withClients.some((item) => item.id === selectedAppointmentId)) {
-        setSelectedAppointmentId(withClients[0]?.id ?? '');
-      }
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Не удалось загрузить визиты');
-      setAppointments([]);
-      setSelectedAppointmentId('');
-    } finally {
-      setLoading(false);
-    }
-  }, [allowed, studioId, selectedAppointmentId]);
 
   const loadServices = useCallback(async () => {
     if (!allowed) return;
@@ -265,16 +218,6 @@ export function TreatmentFlowPage() {
 
   useEffect(() => {
     if (!allowed) return;
-    void loadStudios();
-  }, [allowed, loadStudios]);
-
-  useEffect(() => {
-    if (!allowed) return;
-    void loadAppointments();
-  }, [allowed, loadAppointments]);
-
-  useEffect(() => {
-    if (!allowed) return;
     void loadServices();
     // When switching studio/appointment, clear selection to avoid carrying procedures across studios.
     setProtocolForm((prev) => ({ ...prev, procedureServiceIds: [] }));
@@ -286,10 +229,75 @@ export function TreatmentFlowPage() {
       setPlans([]);
       setSelectedPlanId('');
       setPlanForm(emptyPlanForm());
+      setMedicalCardForm(emptyMedicalCardForm());
       return;
     }
     void loadPlans(selectedAppointment.clientUserId);
   }, [selectedAppointment?.clientUserId, loadPlans]);
+
+  useEffect(() => {
+    if (!selectedAppointment?.clientUserId || !selectedAppointmentId) {
+      return;
+    }
+    let cancelled = false;
+    setMedicalCardLoading(true);
+    setError(null);
+    void (async () => {
+      try {
+        const data = await apiRequest<MedicalCardBasics>(
+          `/clients/${selectedAppointment.clientUserId}/medical-card?appointmentId=${encodeURIComponent(selectedAppointmentId)}`,
+        );
+        if (cancelled) return;
+        setMedicalCardForm({
+          birthDate: data.birthDate ?? '',
+          allergies: data.allergies ?? '',
+          chronicConditions: data.chronicConditions ?? '',
+          contraindications: data.contraindications ?? '',
+        });
+      } catch (e) {
+        if (cancelled) return;
+        setMedicalCardForm(emptyMedicalCardForm());
+        setError(e instanceof ApiError ? e.message : 'Не удалось загрузить медкарту');
+      } finally {
+        if (!cancelled) setMedicalCardLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAppointment?.clientUserId, selectedAppointmentId]);
+
+  async function saveMedicalCard() {
+    if (!selectedAppointment?.clientUserId || !selectedAppointmentId) return;
+    setSavingMedicalCard(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const payload = {
+        appointmentId: selectedAppointmentId,
+        birthDate: medicalCardForm.birthDate.trim(),
+        allergies: medicalCardForm.allergies,
+        chronicConditions: medicalCardForm.chronicConditions,
+        contraindications: medicalCardForm.contraindications,
+      };
+      const updated = await apiRequest<MedicalCardBasics>(`/clients/${selectedAppointment.clientUserId}/medical-card`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      setMedicalCardForm({
+        birthDate: updated.birthDate ?? '',
+        allergies: updated.allergies ?? '',
+        chronicConditions: updated.chronicConditions ?? '',
+        contraindications: updated.contraindications ?? '',
+      });
+      setNotice('Медкарта сохранена');
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Не удалось сохранить медкарту');
+    } finally {
+      setSavingMedicalCard(false);
+    }
+  }
 
   async function saveProtocol() {
     if (!selectedAppointment) return;
@@ -414,45 +422,21 @@ export function TreatmentFlowPage() {
       <div className="page-header">
         <h1 className="page-title">Клинический контур</h1>
         <p className="page-subtitle">
-          После визита: заполняйте протокол приёма и формируйте план лечения клиента с последующим обновлением.
+          Карта пациента, протокол визита и план лечения. Оплата и запись на следующий визит — отдельные разделы в меню
+          «Клиника».
         </p>
       </div>
 
-      <div className="surface-card">
-        <div className="field" style={{ maxWidth: 420 }}>
-          <label htmlFor="tf-studio">Студия (опционально)</label>
-          <select id="tf-studio" value={studioId} onChange={(ev) => setStudioId(ev.target.value)}>
-            <option value="">Все доступные</option>
-            {studios.map((studio) => (
-              <option key={studio.id} value={studio.id}>
-                {studio.name} ({studio.city})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="field" style={{ marginBottom: 0 }}>
-          <label htmlFor="tf-appointment">Визит клиента</label>
-          <select
-            id="tf-appointment"
-            value={selectedAppointmentId}
-            onChange={(ev) => setSelectedAppointmentId(ev.target.value)}
-            disabled={loading || appointments.length === 0}
-          >
-            {appointments.map((item) => (
-              <option key={item.id} value={item.id}>
-                {new Date(item.startsAt).toLocaleString('ru-RU')} •{' '}
-                {(item.client?.firstName || item.client?.lastName)
-                  ? `${item.client?.lastName ?? ''} ${item.client?.firstName ?? ''}`.trim()
-                  : item.clientUserId
-                    ? `client ${item.clientUserId}`
-                    : 'клиент не указан'}{' '}
-                • {appointmentStatusRu(item.status)}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+      <ClinicalVisitPickerFields
+        studios={studios}
+        studioId={studioId}
+        onStudioIdChange={setStudioId}
+        appointments={appointments}
+        selectedAppointmentId={selectedAppointmentId}
+        onAppointmentIdChange={setSelectedAppointmentId}
+        loading={loading}
+        ids={{ studio: 'tf-studio', appointment: 'tf-appointment' }}
+      />
 
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="success-banner">{notice}</div> : null}
@@ -461,6 +445,62 @@ export function TreatmentFlowPage() {
         <p style={{ color: 'var(--muted)' }}>{loading ? 'Загрузка визитов…' : 'Нет доступных визитов с клиентом.'}</p>
       ) : (
         <>
+          <div className="surface-card">
+            <h2 style={{ marginTop: 0 }}>Карта пациента</h2>
+            {medicalCardLoading ? (
+              <p style={{ color: 'var(--muted)' }}>Загрузка данных карты…</p>
+            ) : (
+              <div className="grid two-col">
+                <div className="field">
+                  <label htmlFor="tf-mc-birth">Дата рождения</label>
+                  <input
+                    id="tf-mc-birth"
+                    type="date"
+                    value={medicalCardForm.birthDate}
+                    onChange={(ev) => setMedicalCardForm((prev) => ({ ...prev, birthDate: ev.target.value }))}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="tf-mc-allergies">Аллергии</label>
+                  <textarea
+                    id="tf-mc-allergies"
+                    rows={2}
+                    value={medicalCardForm.allergies}
+                    onChange={(ev) => setMedicalCardForm((prev) => ({ ...prev, allergies: ev.target.value }))}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="tf-mc-chronic">Хронические заболевания</label>
+                  <textarea
+                    id="tf-mc-chronic"
+                    rows={2}
+                    value={medicalCardForm.chronicConditions}
+                    onChange={(ev) => setMedicalCardForm((prev) => ({ ...prev, chronicConditions: ev.target.value }))}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="tf-mc-contra">Противопоказания</label>
+                  <textarea
+                    id="tf-mc-contra"
+                    rows={2}
+                    value={medicalCardForm.contraindications}
+                    onChange={(ev) => setMedicalCardForm((prev) => ({ ...prev, contraindications: ev.target.value }))}
+                  />
+                </div>
+              </div>
+            )}
+            <div className="toolbar" style={{ marginBottom: 0 }}>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => void saveMedicalCard()}
+                disabled={savingMedicalCard || medicalCardLoading}
+              >
+                {savingMedicalCard ? 'Сохранение…' : 'Сохранить карту'}
+              </button>
+            </div>
+          </div>
+
           <div className="surface-card">
             <h2 style={{ marginTop: 0 }}>Протокол визита</h2>
             <div className="grid two-col">

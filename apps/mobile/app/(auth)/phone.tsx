@@ -117,14 +117,6 @@ export default function LoginPhoneScreen() {
           <View style={styles.flex} />
 
           <SafeAreaPadding minTop={0} minBottom={16} style={styles.bottom} lightColor="transparent" darkColor="transparent">
-            <Pressable
-              onPress={() => router.push('/(auth)/quiz')}
-              style={({ pressed }) => [styles.quizEntry, pressed && styles.pressed]}
-            >
-              <Text style={styles.quizEntryText} lightColor="#2D6A4F" darkColor="#95D4B3">
-                Пройти диагностический квиз без регистрации
-              </Text>
-            </Pressable>
             {sendError ? (
               <Text style={styles.formError} lightColor="#BA1A1A" darkColor="#FFB4A9">
                 {sendError}
@@ -132,11 +124,23 @@ export default function LoginPhoneScreen() {
             ) : null}
             <Text style={styles.legal} lightColor="rgba(112,121,115,1)" darkColor="rgba(149,163,160,0.85)">
               Нажимая кнопку, вы соглашаетесь с{'\n'}
-              <Text style={styles.legalLink} lightColor="#0F5238" darkColor="#95D4B3">
+              <Text
+                style={styles.legalLink}
+                lightColor="#0F5238"
+                darkColor="#95D4B3"
+                accessibilityRole="link"
+                onPress={() => router.push('/(auth)/consent')}
+              >
                 правилами сервиса
               </Text>{' '}
               и{' '}
-              <Text style={styles.legalLink} lightColor="#0F5238" darkColor="#95D4B3">
+              <Text
+                style={styles.legalLink}
+                lightColor="#0F5238"
+                darkColor="#95D4B3"
+                accessibilityRole="link"
+                onPress={() => router.push('/(auth)/consent')}
+              >
                 политикой конфиденциальности
               </Text>
             </Text>

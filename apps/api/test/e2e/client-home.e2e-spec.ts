@@ -66,6 +66,7 @@ describe('Client home prerequisites (e2e)', () => {
         lastName: expect.any(String),
         email: null,
         birthDate: null,
+        diagnosticQuiz: null,
       }),
     );
 

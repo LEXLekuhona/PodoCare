@@ -2,7 +2,12 @@ import { UserRole } from '@srs/shared-types';
 import { NavLink, Outlet } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthContext';
-import { canManageStaff, canMutateTenantCatalog } from '../lib/roles';
+import {
+  canConfigureAcquiringTerminals,
+  canManageStaff,
+  canMutateTenantCatalog,
+  canUseClinicalOperations,
+} from '../lib/roles';
 
 function roleLabel(role: UserRole): string {
   switch (role) {
@@ -28,6 +33,10 @@ export function AppLayout() {
   const role = user?.role;
   const canTenant = role ? canMutateTenantCatalog(role) : false;
   const canStaff = role ? canManageStaff(role) : false;
+  const canClinical = role ? canUseClinicalOperations(role) : false;
+  const canAcquiring = role ? canConfigureAcquiringTerminals(role) : false;
+  const showCatalogSection = canTenant || canStaff;
+  const showEducationSection = canStaff;
 
   return (
     <div className="layout">
@@ -40,11 +49,22 @@ export function AppLayout() {
         </div>
 
         <nav>
-          <div className="nav-caption">Основное</div>
-          <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>
-            Обзор
-          </NavLink>
-          <div className="nav-caption">Каталог</div>
+          {canClinical ? <div className="nav-caption">Основное</div> : null}
+          {canClinical ? (
+            <NavLink to="/calendar" className={({ isActive }) => (isActive ? 'active' : '')}>
+              Календарь
+            </NavLink>
+          ) : null}
+          {canAcquiring ? <div className="nav-caption">Платформа</div> : null}
+          {canAcquiring ? (
+            <NavLink
+              to="/settings/acquiring-terminals"
+              className={({ isActive }) => (isActive ? 'active' : '')}
+            >
+              Эквайринг
+            </NavLink>
+          ) : null}
+          {showCatalogSection ? <div className="nav-caption">Каталог</div> : null}
           {canTenant ? (
             <>
               <NavLink to="/catalog/networks" className={({ isActive }) => (isActive ? 'active' : '')}>
@@ -85,11 +105,11 @@ export function AppLayout() {
                 Специалисты
               </NavLink>
               <NavLink to="/catalog/staff" className={({ isActive }) => (isActive ? 'active' : '')}>
-                Сотрудники
+                Администраторы
               </NavLink>
             </>
           ) : null}
-          <div className="nav-caption">Обучение</div>
+          {showEducationSection ? <div className="nav-caption">Обучение</div> : null}
           {canStaff ? (
             <>
               <NavLink to="/education/content" className={({ isActive }) => (isActive ? 'active' : '')}>
@@ -100,14 +120,34 @@ export function AppLayout() {
               </NavLink>
             </>
           ) : null}
-          <div className="nav-caption">Клиника</div>
-          {canStaff ? (
-            <NavLink
-              to="/operations/treatment-flow"
-              className={({ isActive }) => (isActive ? 'active' : '')}
-            >
-              Протоколы и планы
-            </NavLink>
+          {canClinical ? <div className="nav-caption">Клиника</div> : null}
+          {canClinical ? (
+            <>
+              <NavLink
+                to="/operations/treatment-flow"
+                className={({ isActive }) => (isActive ? 'active' : '')}
+              >
+                Протоколы и планы
+              </NavLink>
+              <NavLink
+                to="/operations/visit-payment"
+                className={({ isActive }) => (isActive ? 'active' : '')}
+              >
+                Оплата после приёма
+              </NavLink>
+              <NavLink
+                to="/operations/next-appointment"
+                className={({ isActive }) => (isActive ? 'active' : '')}
+              >
+                Следующий приём
+              </NavLink>
+              <NavLink
+                to="/operations/walk-in-client"
+                className={({ isActive }) => (isActive ? 'active' : '')}
+              >
+                Новый клиент
+              </NavLink>
+            </>
           ) : null}
         </nav>
 

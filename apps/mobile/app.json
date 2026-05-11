@@ -38,6 +38,12 @@
           "sounds": []
         }
       ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Нам нужен доступ к календарю, чтобы добавить событие о вашем приёме."
+        }
+      ],
       "@react-native-community/datetimepicker",
       [
         "expo-image-picker",

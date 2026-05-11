@@ -32,14 +32,25 @@ describe('resolveContentCtaNavigation', () => {
     });
   });
 
-  it('maps PHYSICAL_GOOD to products tab', () => {
+  it('maps PHYSICAL_GOOD to product screen', () => {
     const nav = resolveContentCtaNavigation(
       baseCta({ target: ContentCtaTarget.PhysicalGood, targetPhysicalGoodId: 'good-1' }),
     );
     expect(nav).toEqual({
       kind: 'expo-router',
-      pathname: '/(app)/(tabs)/products',
-      params: { highlightPhysicalGoodId: 'good-1' },
+      pathname: '/(app)/product/[id]',
+      params: { id: 'good-1' },
+    });
+  });
+
+  it('maps QUIZ to in-app quiz route', () => {
+    const nav = resolveContentCtaNavigation(
+      baseCta({ target: ContentCtaTarget.Quiz, targetQuizId: 'quiz-uuid' }),
+    );
+    expect(nav).toEqual({
+      kind: 'expo-router',
+      pathname: '/(app)/quiz',
+      params: { quizId: 'quiz-uuid' },
     });
   });
 
@@ -51,6 +62,17 @@ describe('resolveContentCtaNavigation', () => {
       kind: 'expo-router',
       pathname: '/(app)/(tabs)/education',
       params: { focusProgramId: 'prg-1' },
+    });
+  });
+
+  it('maps PROGRAM_INQUIRY to education with programInquiry flag', () => {
+    const nav = resolveContentCtaNavigation(
+      baseCta({ target: ContentCtaTarget.ProgramInquiry, targetProgramId: 'prg-2' }),
+    );
+    expect(nav).toEqual({
+      kind: 'expo-router',
+      pathname: '/(app)/(tabs)/education',
+      params: { focusProgramId: 'prg-2', programInquiry: '1' },
     });
   });
 

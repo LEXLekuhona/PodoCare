@@ -1,8 +1,12 @@
 /* eslint-disable no-console */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import argon2 from 'argon2';
 import {
   AppointmentStatus,
+  NotificationChannel,
+  NotificationTemplateKey,
   ContentAudience,
   ContentCtaTarget,
   ContentFormat,
@@ -22,6 +26,23 @@ import {
 } from '@prisma/client';
 
 const prisma = new PrismaClient();
+
+type ServicePriceCatalogFile = {
+  meta?: { title?: string; effectiveDate?: string; notes?: string };
+  items: Array<{
+    name: string;
+    durationMinutes: number;
+    priceRub: number;
+    categorySlug: string;
+    description?: string;
+  }>;
+};
+
+function loadServicePriceCatalog(): ServicePriceCatalogFile {
+  const catalogPath = join(__dirname, '..', 'data', 'service-price-catalog.json');
+  const raw = readFileSync(catalogPath, 'utf8');
+  return JSON.parse(raw) as ServicePriceCatalogFile;
+}
 
 async function truncateAllTables(): Promise<void> {
   await prisma.$executeRawUnsafe(`
@@ -63,6 +84,94 @@ async function main(): Promise<void> {
         'Сеть студий подологии и восстановительного ухода за стопами.',
       logoUrl: 'https://cdn.solodova-recovery.dev/logo/solodova-recovery-moscow.png',
     },
+  });
+
+  // Уведомления по записи:
+  // - за 24 часа: PUSH
+  // - за 2 часа: SMS
+  await prisma.notificationTemplate.createMany({
+    data: [
+      {
+        networkId: network.id,
+        key: NotificationTemplateKey.APPOINTMENT_REMINDER_24H,
+        channel: NotificationChannel.PUSH,
+        locale: 'ru',
+        subject: 'Напоминание о приёме завтра',
+        body:
+          'Завтра у вас приём в {{studio.name}} к {{specialist.firstName}} {{specialist.lastName}} ({{service.name}}). Время: {{appointment.startsAt}}',
+        variables: [
+          'studio.name',
+          'specialist.firstName',
+          'specialist.lastName',
+          'service.name',
+          'appointment.startsAt',
+        ],
+        isActive: true,
+      },
+      {
+        networkId: network.id,
+        // В enum пока нет ключа "2H", используем существующий ключ и задаём оффсет политикой.
+        key: NotificationTemplateKey.APPOINTMENT_REMINDER_1H,
+        channel: NotificationChannel.SMS,
+        locale: 'ru',
+        subject: '',
+        body:
+          'Напоминание: через 2 часа приём в {{studio.name}} ({{service.name}}), специалист {{specialist.firstName}} {{specialist.lastName}}. Время: {{appointment.startsAt}}',
+        variables: [
+          'studio.name',
+          'specialist.firstName',
+          'specialist.lastName',
+          'service.name',
+          'appointment.startsAt',
+        ],
+        isActive: true,
+      },
+    ],
+  });
+
+  await prisma.reminderPolicy.createMany({
+    data: [
+      {
+        networkId: network.id,
+        templateKey: NotificationTemplateKey.APPOINTMENT_REMINDER_24H,
+        channel: NotificationChannel.PUSH,
+        offsetMinutesBefore: 1440,
+        isActive: true,
+      },
+      {
+        networkId: network.id,
+        templateKey: NotificationTemplateKey.APPOINTMENT_REMINDER_1H,
+        channel: NotificationChannel.SMS,
+        offsetMinutesBefore: 120,
+        isActive: true,
+      },
+    ],
+  });
+
+  await prisma.notificationTemplate.createMany({
+    data: [
+      {
+        networkId: network.id,
+        key: NotificationTemplateKey.TREATMENT_PLAN_READY,
+        channel: NotificationChannel.PUSH,
+        locale: 'ru',
+        subject: 'План лечения в {{studio.name}}',
+        body: '{{treatmentPlan.title}}. Загляните в раздел «План лечения» в приложении.',
+        variables: ['studio.name', 'treatmentPlan.title', 'client.firstName', 'client.lastName'],
+        isActive: true,
+      },
+      {
+        networkId: network.id,
+        key: NotificationTemplateKey.TREATMENT_PLAN_READY,
+        channel: NotificationChannel.SMS,
+        locale: 'ru',
+        subject: '',
+        body:
+          '{{treatmentPlan.title}} ({{studio.name}}). План лечения в приложении Solodova Recovery System.',
+        variables: ['studio.name', 'treatmentPlan.title', 'client.firstName', 'client.lastName'],
+        isActive: true,
+      },
+    ],
   });
 
   const studios = await prisma.$transaction(
@@ -344,42 +453,62 @@ async function main(): Promise<void> {
     ),
   );
 
-  const services = await Promise.all(
-    ([
-      ['Аппаратная обработка стоп', 60, 380000],
-      ['Коррекция вросшего ногтя', 75, 520000],
-      ['Лечение трещин пяток', 50, 340000],
-      ['Подбор индивидуальных стелек', 90, 690000],
-      ['Консультация подолога', 45, 250000],
-      ['Профилактический уход', 55, 300000],
-    ] as Array<[string, number, number]>).map(([name, durationMinutes, priceMinor], idx) =>
-      prisma.service.create({
+  const servicePriceCatalog = loadServicePriceCatalog();
+  const categoryBySlug = new Map(serviceCategories.map((c) => [c.slug, c]));
+
+  const catalogCreates = studios.flatMap((studio) =>
+    servicePriceCatalog.items.map((item, idx) => {
+      const cat = categoryBySlug.get(item.categorySlug);
+      if (!cat) {
+        throw new Error(
+          `service-price-catalog.json: неизвестный categorySlug «${item.categorySlug}» для «${item.name}»`,
+        );
+      }
+      const baseDesc = item.description?.trim()
+        ? item.description.trim()
+        : `${item.name}. Длительность и стоимость по каталогу студии.`;
+      const metaNote = servicePriceCatalog.meta?.effectiveDate
+        ? ` Прайс-лист от ${servicePriceCatalog.meta.effectiveDate}.`
+        : '';
+      return prisma.service.create({
         data: {
-          studioId: studios[idx % studios.length].id,
-          categoryId: serviceCategories[idx % serviceCategories.length].id,
-          name,
-          description: `${name} с учетом анамнеза и текущего состояния стоп.`,
-          durationMinutes,
-          priceMinor,
+          studioId: studio.id,
+          categoryId: cat.id,
+          name: item.name,
+          description: `${baseDesc}${metaNote}`,
+          durationMinutes: item.durationMinutes,
+          priceMinor: Math.round(item.priceRub * 100),
           currency: 'RUB',
-          prepaymentRequired: idx % 2 === 0,
-          prepaymentMinor: idx % 2 === 0 ? Math.round(priceMinor * 0.2) : null,
-          requiresConsultation: idx === 3,
+          prepaymentRequired: false,
+          prepaymentMinor: null,
+          requiresConsultation: false,
           sortOrder: idx + 1,
         },
-      }),
-    ),
+      });
+    }),
   );
 
+  const services = await prisma.$transaction(catalogCreates);
+
+  const servicesByStudioId = new Map<string, typeof services>();
+  for (const svc of services) {
+    const list = servicesByStudioId.get(svc.studioId) ?? [];
+    list.push(svc);
+    servicesByStudioId.set(svc.studioId, list);
+  }
+
   await prisma.$transaction(
-    specialistProfiles.map((profile, idx) =>
-      prisma.specialistService.create({
-        data: {
-          specialistId: profile.id,
-          serviceId: services[idx % services.length].id,
-        },
-      }),
-    ),
+    specialistProfiles.flatMap((profile) => {
+      const studioSvcs = servicesByStudioId.get(profile.studioId) ?? [];
+      return studioSvcs.map((svc) =>
+        prisma.specialistService.create({
+          data: {
+            specialistId: profile.id,
+            serviceId: svc.id,
+          },
+        }),
+      );
+    }),
   );
 
   await Promise.all(

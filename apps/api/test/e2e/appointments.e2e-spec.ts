@@ -1,9 +1,11 @@
 import { getQueueToken } from '@nestjs/bullmq';
+import { AppointmentStatus } from '@prisma/client';
 import { NotificationChannel, NotificationTemplateKey, UserRole } from '@srs/shared-types';
 import argon2 from 'argon2';
 import { addMinutes } from 'date-fns';
 import request from 'supertest';
 
+import { APPOINTMENT_AUTO_NO_SHOW_JOB } from '../../src/modules/appointments/application/appointments.jobs';
 import { buildTestApp } from '../helpers/build-test-app';
 
 import type { PrismaService } from '../../src/infrastructure/prisma/prisma.service';
@@ -476,6 +478,77 @@ describe('Appointments (e2e)', () => {
     expect(updated?.status).toBe('IN_PROGRESS');
   });
 
+  it('auto no-show job completes stale IN_PROGRESS appointments after grace', async () => {
+    const network = await prisma.network.create({
+      data: { name: 'Net F', slug: 'net-f' },
+    });
+    const studio = await prisma.studio.create({
+      data: {
+        networkId: network.id,
+        name: 'Studio F',
+        address: 'Address',
+        city: 'Moscow',
+        openingHours: {},
+      },
+    });
+    const specialistUser = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.Specialist,
+        phone: '+79990040001',
+        firstName: 'Spec',
+        lastName: 'Four',
+      },
+    });
+    const specialist = await prisma.specialistProfile.create({
+      data: {
+        userId: specialistUser.id,
+        studioId: studio.id,
+      },
+    });
+    const service = await prisma.service.create({
+      data: {
+        studioId: studio.id,
+        name: 'Service F',
+        durationMinutes: 30,
+        priceMinor: 100000,
+      },
+    });
+    const client = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.Client,
+        phone: '+79990040002',
+        firstName: 'Client',
+        lastName: 'Four',
+      },
+    });
+
+    const endsAt = addMinutes(new Date(), -20);
+    const startsAt = addMinutes(endsAt, -30);
+    const appt = await prisma.appointment.create({
+      data: {
+        studioId: studio.id,
+        specialistId: specialist.id,
+        serviceId: service.id,
+        clientUserId: client.id,
+        startsAt,
+        endsAt,
+        status: AppointmentStatus.IN_PROGRESS,
+        totalMinor: 100000,
+      },
+    });
+
+    await appointmentsQueue.add(APPOINTMENT_AUTO_NO_SHOW_JOB, { appointmentId: appt.id }, { delay: 0 });
+
+    const updated = await waitFor(
+      () => prisma.appointment.findUnique({ where: { id: appt.id } }),
+      (row) => Boolean(row && row.status === 'COMPLETED' && row.completedAt),
+      7000,
+    );
+    expect(updated?.status).toBe('COMPLETED');
+  });
+
   it('enforces auth contract on protected endpoints (401/403)', async () => {
     const network = await prisma.network.create({
       data: { name: 'Net Security', slug: 'net-security' },
@@ -559,6 +632,15 @@ describe('Appointments (e2e)', () => {
     expect(noAuthCreate.status).toBe(401);
 
     const clientAccessToken = await loginClientByOtp(app, client.phone);
+    const otherClient = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.Client,
+        phone: '+79990035003',
+        firstName: 'Other',
+        lastName: 'Client',
+      },
+    });
     const forbiddenCreate = await request(app.getHttpServer())
       .post('/api/v1/appointments')
       .set('Authorization', `Bearer ${clientAccessToken}`)
@@ -566,7 +648,7 @@ describe('Appointments (e2e)', () => {
         studioId: studio.id,
         specialistId: specialist.id,
         serviceId: service.id,
-        clientUserId: client.id,
+        clientUserId: otherClient.id,
         startsAt: startsAt.toISOString(),
       });
     expect(forbiddenCreate.status).toBe(403);
@@ -733,5 +815,390 @@ describe('Appointments (e2e)', () => {
       });
     expect(create.status).toBe(400);
     expect(create.body.message).toContain('в прошлом');
+  });
+
+  it('specialist appointment list is scoped to own profile and allowed studios', async () => {
+    const network = await prisma.network.create({
+      data: { name: 'Net SpecList', slug: 'net-spec-list' },
+    });
+    const studioA = await prisma.studio.create({
+      data: {
+        networkId: network.id,
+        name: 'Studio A',
+        address: 'A',
+        city: 'Moscow',
+        openingHours: {},
+      },
+    });
+    const studioB = await prisma.studio.create({
+      data: {
+        networkId: network.id,
+        name: 'Studio B',
+        address: 'B',
+        city: 'Moscow',
+        openingHours: {},
+      },
+    });
+    const adminPassword = 'StrongPass123!';
+    const admin = await prisma.user.create({
+      data: {
+        studioId: studioA.id,
+        role: UserRole.StudioAdmin,
+        phone: '+79990050099',
+        email: 'studio-admin-spec-list@solodova-recovery.local',
+        passwordHash: await argon2.hash(adminPassword),
+        firstName: 'Studio',
+        lastName: 'Admin',
+      },
+    });
+    const specPassword = 'StrongPass123!';
+    const specUserA = await prisma.user.create({
+      data: {
+        studioId: studioA.id,
+        role: UserRole.Specialist,
+        phone: '+79990050001',
+        email: 'spec-a@solodova-recovery.local',
+        passwordHash: await argon2.hash(specPassword),
+        firstName: 'Spec',
+        lastName: 'A',
+      },
+    });
+    const profileA = await prisma.specialistProfile.create({
+      data: { userId: specUserA.id, studioId: studioA.id },
+    });
+    await prisma.specialistStudio.create({
+      data: { specialistProfileId: profileA.id, studioId: studioA.id },
+    });
+    const specUserB = await prisma.user.create({
+      data: {
+        studioId: studioB.id,
+        role: UserRole.Specialist,
+        phone: '+79990050002',
+        firstName: 'Spec',
+        lastName: 'B',
+      },
+    });
+    const profileB = await prisma.specialistProfile.create({
+      data: { userId: specUserB.id, studioId: studioB.id },
+    });
+    await prisma.specialistStudio.create({
+      data: { specialistProfileId: profileB.id, studioId: studioB.id },
+    });
+    const serviceA = await prisma.service.create({
+      data: {
+        studioId: studioA.id,
+        name: 'Svc A',
+        durationMinutes: 30,
+        priceMinor: 100000,
+      },
+    });
+    const serviceB = await prisma.service.create({
+      data: {
+        studioId: studioB.id,
+        name: 'Svc B',
+        durationMinutes: 30,
+        priceMinor: 100000,
+      },
+    });
+    const clientA = await prisma.user.create({
+      data: {
+        studioId: studioA.id,
+        role: UserRole.Client,
+        phone: '+79990050003',
+        firstName: 'Client',
+        lastName: 'A',
+      },
+    });
+    const clientB = await prisma.user.create({
+      data: {
+        studioId: studioB.id,
+        role: UserRole.Client,
+        phone: '+79990050004',
+        firstName: 'Client',
+        lastName: 'B',
+      },
+    });
+
+    const slotA = addMinutes(new Date(), 120);
+    const slotB = addMinutes(new Date(), 180);
+    await prisma.specialistShift.createMany({
+      data: [
+        {
+          specialistId: profileA.id,
+          studioId: studioA.id,
+          startsAt: addMinutes(slotA, -60),
+          endsAt: addMinutes(slotA, 120),
+        },
+        {
+          specialistId: profileB.id,
+          studioId: studioB.id,
+          startsAt: addMinutes(slotB, -60),
+          endsAt: addMinutes(slotB, 120),
+        },
+      ],
+    });
+
+    const adminToken = await loginStaff(app, admin.email!, adminPassword);
+
+    const apptA = await request(app.getHttpServer())
+      .post('/api/v1/appointments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        studioId: studioA.id,
+        specialistId: profileA.id,
+        serviceId: serviceA.id,
+        clientUserId: clientA.id,
+        startsAt: slotA.toISOString(),
+      });
+    expect(apptA.status).toBe(201);
+
+    const apptB = await request(app.getHttpServer())
+      .post('/api/v1/appointments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        studioId: studioB.id,
+        specialistId: profileB.id,
+        serviceId: serviceB.id,
+        clientUserId: clientB.id,
+        startsAt: slotB.toISOString(),
+      });
+    expect(apptB.status).toBe(201);
+
+    const specToken = await loginStaff(app, specUserA.email!, specPassword);
+
+    const listOwn = await request(app.getHttpServer())
+      .get('/api/v1/appointments')
+      .set('Authorization', `Bearer ${specToken}`)
+      .query({ from: addMinutes(new Date(), -60).toISOString(), to: addMinutes(new Date(), 600).toISOString() });
+    expect(listOwn.status).toBe(200);
+    expect(listOwn.body.map((x: { id: string }) => x.id)).toEqual([apptA.body.id]);
+
+    const listAlienStudio = await request(app.getHttpServer())
+      .get('/api/v1/appointments')
+      .set('Authorization', `Bearer ${specToken}`)
+      .query({
+        studioId: studioB.id,
+        from: addMinutes(new Date(), -60).toISOString(),
+        to: addMinutes(new Date(), 600).toISOString(),
+      });
+    expect(listAlienStudio.status).toBe(403);
+
+    const listAlienSpecialist = await request(app.getHttpServer())
+      .get('/api/v1/appointments')
+      .set('Authorization', `Bearer ${specToken}`)
+      .query({
+        specialistId: profileB.id,
+        from: addMinutes(new Date(), -60).toISOString(),
+        to: addMinutes(new Date(), 600).toISOString(),
+      });
+    expect(listAlienSpecialist.status).toBe(403);
+  });
+
+  it('specialist cannot create appointment for another specialist profile', async () => {
+    const network = await prisma.network.create({
+      data: { name: 'Net Cr', slug: 'net-cr' },
+    });
+    const studio = await prisma.studio.create({
+      data: {
+        networkId: network.id,
+        name: 'Studio Cr',
+        address: 'A',
+        city: 'Moscow',
+        openingHours: {},
+      },
+    });
+    const pass = 'StrongPass123!';
+    const specAUser = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.Specialist,
+        phone: '+79990060001',
+        email: 'spec-a-cr@solodova-recovery.local',
+        passwordHash: await argon2.hash(pass),
+        firstName: 'A',
+        lastName: 'A',
+      },
+    });
+    const specBUser = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.Specialist,
+        phone: '+79990060002',
+        email: 'spec-b-cr@solodova-recovery.local',
+        passwordHash: await argon2.hash(pass),
+        firstName: 'B',
+        lastName: 'B',
+      },
+    });
+    const profileA = await prisma.specialistProfile.create({
+      data: { userId: specAUser.id, studioId: studio.id },
+    });
+    const profileB = await prisma.specialistProfile.create({
+      data: { userId: specBUser.id, studioId: studio.id },
+    });
+    await prisma.specialistStudio.createMany({
+      data: [
+        { specialistProfileId: profileA.id, studioId: studio.id },
+        { specialistProfileId: profileB.id, studioId: studio.id },
+      ],
+    });
+    const service = await prisma.service.create({
+      data: {
+        studioId: studio.id,
+        name: 'Svc Cr',
+        durationMinutes: 30,
+        priceMinor: 100000,
+      },
+    });
+    const client = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.Client,
+        phone: '+79990060003',
+        firstName: 'Cl',
+        lastName: 'Cl',
+      },
+    });
+    const slotStart = addMinutes(new Date(), 240);
+    await prisma.specialistShift.create({
+      data: {
+        specialistId: profileA.id,
+        studioId: studio.id,
+        startsAt: addMinutes(slotStart, -60),
+        endsAt: addMinutes(slotStart, 120),
+      },
+    });
+    const tokenB = await loginStaff(app, specBUser.email!, pass);
+    const forbidden = await request(app.getHttpServer())
+      .post('/api/v1/appointments')
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({
+        studioId: studio.id,
+        specialistId: profileA.id,
+        serviceId: service.id,
+        clientUserId: client.id,
+        startsAt: slotStart.toISOString(),
+        source: 'STUDIO',
+      });
+    expect(forbidden.status).toBe(403);
+  });
+
+  it('walk-in clients: 401 without token', async () => {
+    const get = await request(app.getHttpServer()).get('/api/v1/appointments/walk-in-clients').query({
+      studioId: '00000000-0000-0000-0000-000000000001',
+      q: '12',
+    });
+    expect(get.status).toBe(401);
+    const post = await request(app.getHttpServer()).post('/api/v1/appointments/walk-in-clients').send({});
+    expect(post.status).toBe(401);
+  });
+
+  it('walk-in clients: 403 for client role', async () => {
+    const network = await prisma.network.create({ data: { name: 'NW', slug: 'nw-wi' } });
+    const studio = await prisma.studio.create({
+      data: {
+        networkId: network.id,
+        name: 'SW',
+        address: 'a',
+        city: 'Moscow',
+        openingHours: {},
+      },
+    });
+    const client = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.Client,
+        phone: '+79994440001',
+        firstName: 'C',
+        lastName: 'C',
+      },
+    });
+    const token = await loginClientByOtp(app, client.phone);
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/appointments/walk-in-clients')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        studioId: studio.id,
+        firstName: 'Иван',
+        lastName: 'Тестов',
+        phone: '+79994440002',
+      });
+    expect(res.status).toBe(403);
+  });
+
+  it('walk-in: staff creates client, visit invoice attaches order to walkIn', async () => {
+    const network = await prisma.network.create({ data: { name: 'NWI', slug: 'n-wi' } });
+    const studio = await prisma.studio.create({
+      data: {
+        networkId: network.id,
+        name: 'SWI',
+        address: 'a',
+        city: 'Moscow',
+        openingHours: {},
+      },
+    });
+    const pass = 'StrongPass123!';
+    const admin = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.StudioAdmin,
+        phone: '+79995550001',
+        email: 'admin-wi@local.test',
+        passwordHash: await argon2.hash(pass),
+        firstName: 'Ad',
+        lastName: 'Ad',
+      },
+    });
+    const specUser = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.Specialist,
+        phone: '+79995550002',
+        email: 'spec-wi@local.test',
+        passwordHash: await argon2.hash(pass),
+        firstName: 'Sp',
+        lastName: 'Sp',
+      },
+    });
+    const spec = await prisma.specialistProfile.create({
+      data: { userId: specUser.id, studioId: studio.id },
+    });
+    await prisma.specialistStudio.create({
+      data: { specialistProfileId: spec.id, studioId: studio.id },
+    });
+    const service = await prisma.service.create({
+      data: { studioId: studio.id, name: 'S wi', durationMinutes: 30, priceMinor: 15000 },
+    });
+    const walkIn = await prisma.walkInClient.create({
+      data: {
+        studioId: studio.id,
+        firstName: 'Пётр',
+        lastName: 'WalkIn',
+        phone: '+79995550003',
+      },
+    });
+    const appt = await prisma.appointment.create({
+      data: {
+        studioId: studio.id,
+        specialistId: spec.id,
+        serviceId: service.id,
+        walkInClientId: walkIn.id,
+        startsAt: new Date(Date.now() + 60_000),
+        endsAt: new Date(Date.now() + 120_000),
+        totalMinor: 15000,
+        status: AppointmentStatus.COMPLETED,
+      },
+    });
+    const token = await loginStaff(app, admin.email!, pass);
+    const inv = await request(app.getHttpServer())
+      .post('/api/v1/orders/visit-invoice')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        appointmentId: appt.id,
+        items: [{ productType: 'SERVICE', serviceId: service.id, quantity: 1 }],
+      });
+    expect(inv.status).toBe(201);
+    expect(inv.body.walkInClientId).toBe(walkIn.id);
+    expect(inv.body.userId).toBeNull();
   });
 });

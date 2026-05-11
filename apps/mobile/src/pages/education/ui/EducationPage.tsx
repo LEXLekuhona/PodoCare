@@ -1,9 +1,9 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import type { ReactNode } from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Linking } from 'react-native';
 import {
   ActivityIndicator,
@@ -25,6 +25,7 @@ import {
   type FreeMaterialDto,
   type FreeMaterialKind,
   type MyCourseDto,
+  type ContentFeedCtaDto,
   type ContentFeedItemDto,
   clickContentItemCta,
   fetchEducationScreen,
@@ -33,6 +34,7 @@ import {
 } from '@/features/education/education-api';
 import { resolveContentCtaNavigation } from '@/features/education/content-cta-routing';
 import { ApiError } from '@/shared/api/api-error';
+import { sanitizeRouteParam } from '@/shared/navigation/route-params';
 import { SafeAreaPadding } from '@/shared/ui/safe-area';
 
 const PRIMARY = '#0F5238';
@@ -92,6 +94,27 @@ function comingSoon(action: string) {
 
 export function EducationPage() {
   const insets = useSafeAreaInsets();
+  const {
+    focusProgramId: focusProgramIdRaw,
+    focusContentSeriesId: focusSeriesRaw,
+    programInquiry: programInquiryRaw,
+  } = useLocalSearchParams<{
+    focusProgramId?: string;
+    focusContentSeriesId?: string;
+    programInquiry?: string;
+  }>();
+  const focusProgramId = sanitizeRouteParam(focusProgramIdRaw);
+  const focusContentSeriesId = sanitizeRouteParam(focusSeriesRaw);
+  const programInquiry = sanitizeRouteParam(programInquiryRaw) === '1';
+  const contentFocusHint =
+    programInquiry && focusProgramId != null
+      ? 'Вы перешли из материала по программе: заявка на программу оформляется через студию; лента и запись — ниже и на «Главная».'
+      : focusProgramId != null
+        ? 'Вы перешли из материала: ниже — лента и курсы; запись к специалисту — через «Главная».'
+        : focusContentSeriesId != null
+          ? 'Вы перешли из материала: материалы этой серии подняты вверх ленты.'
+          : null;
+
   const [audience, setAudience] = useState<EducationAudience>('client');
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchEducationScreen>> | null>(null);
   const [clientFeed, setClientFeed] = useState<ContentFeedItemDto[]>([]);
@@ -138,9 +161,7 @@ export function EducationPage() {
     [load],
   );
 
-  const handleCta = useCallback(async (item: ContentFeedItemDto) => {
-    const cta = item.ctas[0];
-    if (!cta) return;
+  const handleCta = useCallback(async (item: ContentFeedItemDto, cta: ContentFeedCtaDto) => {
     setBusyItemId(item.id);
     try {
       await clickContentItemCta(item.id, cta.id);
@@ -161,6 +182,17 @@ export function EducationPage() {
       setBusyItemId(null);
     }
   }, []);
+
+  const orderedClientFeed = useMemo(() => {
+    if (!focusContentSeriesId) return clientFeed;
+    const seriesId = focusContentSeriesId;
+    return [...clientFeed].sort((a, b) => {
+      const aHit = a.seriesId === seriesId ? 0 : 1;
+      const bHit = b.seriesId === seriesId ? 0 : 1;
+      if (aHit !== bHit) return aHit - bHit;
+      return 0;
+    });
+  }, [clientFeed, focusContentSeriesId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -217,6 +249,14 @@ export function EducationPage() {
           </Pressable>
         ) : null}
 
+        {contentFocusHint && audience === 'client' ? (
+          <RNView style={styles.focusHint}>
+            <Text style={styles.focusHintText} lightColor={ON_SURFACE_VARIANT} darkColor="rgba(255,255,255,0.65)">
+              {contentFocusHint}
+            </Text>
+          </RNView>
+        ) : null}
+
         <RNView style={styles.segmentWrap}>
           <View style={styles.segmentRail} lightColor={SURFACE_LOW} darkColor="rgba(255,255,255,0.08)">
             <Pressable
@@ -258,12 +298,12 @@ export function EducationPage() {
           <>
             {audience === 'client' ? (
               <Section title="Лента контента">
-                {clientFeed.length === 0 ? (
+                {orderedClientFeed.length === 0 ? (
                   <Text style={styles.emptyHint} lightColor={ON_SURFACE_VARIANT} darkColor="rgba(255,255,255,0.5)">
                     Пока нет опубликованных материалов.
                   </Text>
                 ) : (
-                  clientFeed.map((item) => (
+                  orderedClientFeed.map((item) => (
                     <ClientContentCard
                       key={item.id}
                       item={item}
@@ -478,10 +518,10 @@ function ClientContentCard(props: {
   item: ContentFeedItemDto;
   busy: boolean;
   onProgress: (item: ContentFeedItemDto, percent: number) => void;
-  onCta: (item: ContentFeedItemDto) => void;
+  onCta: (item: ContentFeedItemDto, cta: ContentFeedCtaDto) => void;
 }) {
   const percent = Math.min(100, Math.max(0, props.item.progress.percent));
-  const cta = props.item.ctas[0];
+  const ctas = [...props.item.ctas].sort((a, b) => a.sortOrder - b.sortOrder);
   const locked = props.item.paywall.isLocked;
 
   return (
@@ -541,17 +581,26 @@ function ClientContentCard(props: {
           </RNView>
         ) : null}
 
-        {cta && !locked ? (
-          <Pressable onPress={() => props.onCta(props.item)} style={({ pressed }) => [styles.ctaOuter, pressed && styles.pressed]}>
-            <LinearGradient
-              colors={[PRIMARY, PRIMARY_CONTAINER]}
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={styles.ctaGradient}
-            >
-              <Text style={styles.ctaText}>{cta.label}</Text>
-            </LinearGradient>
-          </Pressable>
+        {!locked && ctas.length > 0 ? (
+          <RNView style={{ gap: 8, marginTop: 4 }}>
+            {ctas.map((cta) => (
+              <Pressable
+                key={cta.id}
+                onPress={() => props.onCta(props.item, cta)}
+                disabled={props.busy}
+                style={({ pressed }) => [styles.ctaOuter, pressed && styles.pressed]}
+              >
+                <LinearGradient
+                  colors={[PRIMARY, PRIMARY_CONTAINER]}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={styles.ctaGradient}
+                >
+                  <Text style={styles.ctaText}>{cta.label}</Text>
+                </LinearGradient>
+              </Pressable>
+            ))}
+          </RNView>
         ) : null}
       </RNView>
     </View>
@@ -626,6 +675,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_500Medium',
     fontWeight: '500',
+  },
+  focusHint: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    marginBottom: 12,
+    backgroundColor: 'rgba(45,106,79,0.08)',
+  },
+  focusHintText: {
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    fontWeight: '500',
+    lineHeight: 18,
   },
   emptyHint: {
     fontSize: 14,

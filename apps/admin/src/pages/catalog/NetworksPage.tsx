@@ -7,6 +7,8 @@ import { useAuth } from '../../auth/AuthContext';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { slugify } from '../../lib/identifiers';
 import { canMutateTenantCatalog } from '../../lib/roles';
+import { DeleteIcon } from '../../ui/DeleteIcon';
+import EditIcon from '../../ui/EditIcon';
 import { FilterBar } from '../../ui/FilterBar';
 import { useToast } from '../../ui/ToastContext';
 
@@ -193,6 +195,9 @@ export function NetworksPage() {
                         <span className="inline-actions">
                           <button
                             type="button"
+                            className="action-icon-btn"
+                            aria-label="Изменить сеть"
+                            title="Изменить"
                             onClick={() => {
                               setSlugEditedManually(true);
                               setModal({
@@ -207,10 +212,16 @@ export function NetworksPage() {
                               });
                             }}
                           >
-                            Изменить
+                            <EditIcon />
                           </button>
-                          <button type="button" className="danger" onClick={() => void remove(r.id, r.name)}>
-                            Удалить
+                          <button
+                            type="button"
+                            className="danger action-icon-btn"
+                            aria-label="Удалить сеть"
+                            title="Удалить"
+                            onClick={() => void remove(r.id, r.name)}
+                          >
+                            <DeleteIcon />
                           </button>
                         </span>
                       </td>

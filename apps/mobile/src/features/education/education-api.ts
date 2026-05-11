@@ -2,6 +2,7 @@ import type {
   ClientContentCtaClickResponse,
   ClientContentFeedItem,
   ClientContentFeedResponse,
+  ClientContentItemDetail,
 } from '@srs/shared-types';
 
 import { apiFetchJsonAuth } from '@/shared/api/authenticated-fetch';
@@ -58,6 +59,12 @@ export async function fetchEducationScreen(audience: EducationAudience): Promise
 
 export async function fetchClientContentFeed(): Promise<ContentFeedDto> {
   return apiFetchJsonAuth<ContentFeedDto>('/client/content/feed');
+}
+
+export async function fetchClientContentItem(itemId: string): Promise<ClientContentItemDetail> {
+  return apiFetchJsonAuth<ClientContentItemDetail>(
+    `/client/content/items/${encodeURIComponent(itemId)}`,
+  );
 }
 
 export async function saveContentItemProgress(

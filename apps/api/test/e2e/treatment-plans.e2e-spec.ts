@@ -1,4 +1,4 @@
-import { UserRole } from '@srs/shared-types';
+import { NotificationChannel, NotificationTemplateKey, UserRole } from '@srs/shared-types';
 import argon2 from 'argon2';
 import { addMinutes } from 'date-fns';
 import request from 'supertest';
@@ -16,6 +16,24 @@ async function loginStaff(app: INestApplication, email: string, password: string
   });
   expect(login.status).toBe(201);
   return login.body.tokens.accessToken as string;
+}
+
+async function waitFor<T>(
+  probe: () => Promise<T>,
+  predicate: (value: T) => boolean,
+  timeoutMs = 8000,
+): Promise<T> {
+  const started = Date.now();
+  while (true) {
+    const value = await probe();
+    if (predicate(value)) {
+      return value;
+    }
+    if (Date.now() - started >= timeoutMs) {
+      throw new Error(`waitFor timeout after ${timeoutMs}ms`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 120));
+  }
 }
 
 async function loginClientByOtp(app: INestApplication, phone: string): Promise<string> {
@@ -57,6 +75,30 @@ describe('Treatment plans + protocols (e2e)', () => {
         city: 'Moscow',
         openingHours: {},
       },
+    });
+    await prisma.notificationTemplate.createMany({
+      data: [
+        {
+          networkId: network.id,
+          key: NotificationTemplateKey.TreatmentPlanReady,
+          channel: NotificationChannel.Push,
+          locale: 'ru',
+          subject: 'План лечения',
+          body: '{{treatmentPlan.title}} в {{studio.name}}',
+          variables: ['treatmentPlan.title', 'studio.name'],
+          isActive: true,
+        },
+        {
+          networkId: network.id,
+          key: NotificationTemplateKey.TreatmentPlanReady,
+          channel: NotificationChannel.Sms,
+          locale: 'ru',
+          subject: '',
+          body: '{{treatmentPlan.title}} — {{studio.name}}',
+          variables: ['treatmentPlan.title', 'studio.name'],
+          isActive: true,
+        },
+      ],
     });
     const specialistPassword = 'StrongPass123!';
     const specialistUser = await prisma.user.create({
@@ -151,6 +193,20 @@ describe('Treatment plans + protocols (e2e)', () => {
       });
     expect(plan.status).toBe(201);
     expect(plan.body.steps).toHaveLength(1);
+
+    const smsNotification = await waitFor(
+      () =>
+        prisma.notification.findFirst({
+          where: {
+            userId: client.id,
+            type: 'TREATMENT_PLAN_CREATED',
+            channel: 'SMS',
+            idempotencyKey: `treatment-plan-${plan.body.id as string}-sms-created`,
+          },
+        }),
+      (row) => row !== null && row.status === 'SENT',
+    );
+    expect(smsNotification?.body).toContain('Домашний план ухода');
 
     const clientToken = await loginClientByOtp(app, client.phone);
     const myPlans = await request(app.getHttpServer())
@@ -261,5 +317,146 @@ describe('Treatment plans + protocols (e2e)', () => {
       .set('Authorization', `Bearer ${adminBToken}`)
       .send({ comment: 'Попытка редактирования чужой сети' });
     expect(forbiddenPatch.status).toBe(403);
+  });
+
+  it('staff reads and updates client medical card during appointment; client sees basics', async () => {
+    const network = await prisma.network.create({ data: { name: 'Net MC', slug: 'net-mc' } });
+    const studio = await prisma.studio.create({
+      data: {
+        networkId: network.id,
+        name: 'Studio MC',
+        address: 'Address',
+        city: 'Moscow',
+        openingHours: {},
+      },
+    });
+    const specialistPassword = 'StrongPass123!';
+    const specialistUser = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.Specialist,
+        phone: '+79993335501',
+        email: 'spec-mc@solodova-recovery.local',
+        passwordHash: await argon2.hash(specialistPassword),
+        firstName: 'Spec',
+        lastName: 'MC',
+      },
+    });
+    const specialist = await prisma.specialistProfile.create({
+      data: {
+        userId: specialistUser.id,
+        studioId: studio.id,
+      },
+    });
+    await prisma.specialistStudio.create({
+      data: { specialistProfileId: specialist.id, studioId: studio.id },
+    });
+    const service = await prisma.service.create({
+      data: {
+        studioId: studio.id,
+        name: 'Consult MC',
+        durationMinutes: 60,
+        priceMinor: 200000,
+      },
+    });
+    const client = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.Client,
+        phone: '+79993335502',
+        firstName: 'Client',
+        lastName: 'MC',
+      },
+    });
+    const slotStart = addMinutes(new Date(), 120);
+    await prisma.specialistShift.create({
+      data: {
+        specialistId: specialist.id,
+        studioId: studio.id,
+        startsAt: addMinutes(slotStart, -90),
+        endsAt: addMinutes(slotStart, 180),
+      },
+    });
+    const specialistToken = await loginStaff(app, specialistUser.email!, specialistPassword);
+    const appointment = await request(app.getHttpServer())
+      .post('/api/v1/appointments')
+      .set('Authorization', `Bearer ${specialistToken}`)
+      .send({
+        studioId: studio.id,
+        specialistId: specialist.id,
+        serviceId: service.id,
+        clientUserId: client.id,
+        startsAt: slotStart.toISOString(),
+      });
+    expect(appointment.status).toBe(201);
+    const appointmentId = appointment.body.id as string;
+
+    const get401 = await request(app.getHttpServer())
+      .get(`/api/v1/clients/${client.id}/medical-card`)
+      .query({ appointmentId });
+    expect(get401.status).toBe(401);
+
+    const clientToken = await loginClientByOtp(app, client.phone);
+    const get403 = await request(app.getHttpServer())
+      .get(`/api/v1/clients/${client.id}/medical-card`)
+      .query({ appointmentId })
+      .set('Authorization', `Bearer ${clientToken}`);
+    expect(get403.status).toBe(403);
+
+    const getEmpty = await request(app.getHttpServer())
+      .get(`/api/v1/clients/${client.id}/medical-card`)
+      .query({ appointmentId })
+      .set('Authorization', `Bearer ${specialistToken}`);
+    expect(getEmpty.status).toBe(200);
+    expect(getEmpty.body).toEqual(
+      expect.objectContaining({
+        birthDate: null,
+        allergies: null,
+        chronicConditions: null,
+        contraindications: null,
+      }),
+    );
+
+    const patch = await request(app.getHttpServer())
+      .patch(`/api/v1/clients/${client.id}/medical-card`)
+      .set('Authorization', `Bearer ${specialistToken}`)
+      .send({
+        appointmentId,
+        birthDate: '1990-05-01',
+        allergies: 'Пенициллин',
+        chronicConditions: 'СД 2 типа',
+        contraindications: 'Острые воспаления',
+      });
+    expect(patch.status).toBe(200);
+    expect(patch.body).toEqual(
+      expect.objectContaining({
+        birthDate: '1990-05-01',
+        allergies: 'Пенициллин',
+        chronicConditions: 'СД 2 типа',
+        contraindications: 'Острые воспаления',
+      }),
+    );
+
+    const myCard = await request(app.getHttpServer())
+      .get('/api/v1/me/medical-card')
+      .set('Authorization', `Bearer ${clientToken}`);
+    expect(myCard.status).toBe(200);
+    expect(myCard.body.basics).toEqual(
+      expect.objectContaining({
+        birthDate: '1990-05-01',
+        allergies: 'Пенициллин',
+        chronicConditions: 'СД 2 типа',
+        contraindications: 'Острые воспаления',
+      }),
+    );
+
+    const patch403 = await request(app.getHttpServer())
+      .patch(`/api/v1/clients/${client.id}/medical-card`)
+      .set('Authorization', `Bearer ${clientToken}`)
+      .send({
+        appointmentId,
+        allergies: 'X',
+      });
+    expect(patch403.status).toBe(403);
   });
 });

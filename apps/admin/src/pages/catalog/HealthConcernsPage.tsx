@@ -7,6 +7,8 @@ import { useAuth } from '../../auth/AuthContext';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { slugify } from '../../lib/identifiers';
 import { canMutateTenantCatalog } from '../../lib/roles';
+import { DeleteIcon } from '../../ui/DeleteIcon';
+import EditIcon from '../../ui/EditIcon';
 import { FilterBar } from '../../ui/FilterBar';
 import { useToast } from '../../ui/ToastContext';
 
@@ -204,28 +206,39 @@ export function HealthConcernsPage() {
                     <td>{r.sortOrder}</td>
                     <td>{r.isActive ? 'да' : 'нет'}</td>
                     {canMutate ? (
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSlugEditedManually(true);
-                            setModal({
-                              mode: 'edit',
-                              id: r.id,
-                              form: {
-                                slug: r.slug,
-                                title: r.title,
-                                description: r.description ?? '',
-                                isActive: r.isActive,
-                              },
-                            });
-                          }}
-                        >
-                          Изменить
-                        </button>{' '}
-                        <button type="button" className="danger" onClick={() => void remove(r.id, r.title)}>
-                          Удалить
-                        </button>
+                      <td>
+                        <span className="inline-actions">
+                          <button
+                            type="button"
+                            className="action-icon-btn"
+                            aria-label="Изменить карточку"
+                            title="Изменить"
+                            onClick={() => {
+                              setSlugEditedManually(true);
+                              setModal({
+                                mode: 'edit',
+                                id: r.id,
+                                form: {
+                                  slug: r.slug,
+                                  title: r.title,
+                                  description: r.description ?? '',
+                                  isActive: r.isActive,
+                                },
+                              });
+                            }}
+                          >
+                            <EditIcon />
+                          </button>
+                          <button
+                            type="button"
+                            className="danger action-icon-btn"
+                            aria-label="Удалить карточку"
+                            title="Удалить"
+                            onClick={() => void remove(r.id, r.title)}
+                          >
+                            <DeleteIcon />
+                          </button>
+                        </span>
                       </td>
                     ) : null}
                   </tr>

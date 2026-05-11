@@ -9,8 +9,12 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@srs/shared-types';
 
@@ -56,11 +60,20 @@ import { UpdateStudioServiceDto } from './dto/update-studio-service.dto';
 import { UpdateStudioDto } from './dto/update-studio.dto';
 
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
+import type { Request } from 'express';
 
 const ADMIN_CATALOG_ROLES = [
   UserRole.NetworkOwner,
   UserRole.StudioAdmin,
   UserRole.SuperAdmin,
+] as const;
+
+/** Чтение студий и услуг для клинического сценария в админке (специалист). */
+const ADMIN_CATALOG_CLINICAL_READ_ROLES = [
+  UserRole.NetworkOwner,
+  UserRole.StudioAdmin,
+  UserRole.SuperAdmin,
+  UserRole.Specialist,
 ] as const;
 
 @ApiTags('admin-catalog')
@@ -118,12 +131,14 @@ export class AdminCatalogController {
   // --- Studios ---
 
   @Get('studios')
-  @ApiOperation({ summary: 'Список студий (StudioAdmin — только своя)' })
+  @Roles(...ADMIN_CATALOG_CLINICAL_READ_ROLES)
+  @ApiOperation({ summary: 'Список студий (StudioAdmin — только своя; Specialist — свои точки приёма)' })
   listStudios(@CurrentUser() user: JwtAccessPayload, @Query() q: ListStudiosQueryDto) {
     return this.adminCatalogService.listStudios(user, q);
   }
 
   @Get('studios/:id')
+  @Roles(...ADMIN_CATALOG_CLINICAL_READ_ROLES)
   @ApiOperation({ summary: 'Студия по id' })
   getStudio(@CurrentUser() user: JwtAccessPayload, @Param('id', ParseUUIDPipe) id: string) {
     return this.adminCatalogService.getStudio(user, id);
@@ -154,6 +169,7 @@ export class AdminCatalogController {
   // --- Услуги студии ---
 
   @Get('studios/:studioId/services')
+  @Roles(...ADMIN_CATALOG_CLINICAL_READ_ROLES)
   @ApiOperation({ summary: 'Услуги студии (все, для админки)' })
   listStudioServices(
     @CurrentUser() user: JwtAccessPayload,
@@ -163,6 +179,7 @@ export class AdminCatalogController {
   }
 
   @Get('studios/:studioId/services/:serviceId')
+  @Roles(...ADMIN_CATALOG_CLINICAL_READ_ROLES)
   @ApiOperation({ summary: 'Услуга по id' })
   getStudioService(
     @CurrentUser() user: JwtAccessPayload,
@@ -252,6 +269,20 @@ export class AdminCatalogController {
     @Param('networkId', ParseUUIDPipe) networkId: string,
   ) {
     return this.adminPhysicalGoodsService.list(user, networkId);
+  }
+
+  @Post('networks/:networkId/physical-goods/images')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({ summary: 'Загрузить изображение товара и получить публичный URL' })
+  uploadPhysicalGoodImage(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('networkId', ParseUUIDPipe) networkId: string,
+    @UploadedFile() file: { originalname: string; mimetype: string; buffer: Buffer; size: number } | undefined,
+    @Req() req: Request,
+  ) {
+    const proto = String(req.headers['x-forwarded-proto'] ?? req.protocol).split(',')[0]?.trim() || req.protocol;
+    const host = req.get('host') ?? 'localhost';
+    return this.adminPhysicalGoodsService.saveImage(user, networkId, file, `${proto}://${host}`);
   }
 
   @Get('networks/:networkId/physical-goods/:goodId')
@@ -470,9 +501,9 @@ export class AdminCatalogController {
   }
 
   @Delete('specialists/:id')
-  @ApiOperation({ summary: 'Деактивировать специалиста' })
+  @ApiOperation({ summary: 'Удалить специалиста' })
   deleteSpecialist(@CurrentUser() user: JwtAccessPayload, @Param('id', ParseUUIDPipe) id: string) {
-    return this.adminSpecialistsService.deactivate(user, id);
+    return this.adminSpecialistsService.remove(user, id);
   }
 
   @Get('specialists/:id/shifts')

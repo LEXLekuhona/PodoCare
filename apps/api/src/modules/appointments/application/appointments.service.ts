@@ -9,13 +9,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { AppointmentSource, AppointmentStatus, ShiftStatus, UserRole } from '@srs/shared-types';
 import type { Queue } from 'bullmq';
 import { addDays, addMinutes } from 'date-fns';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 
 import type { AppointmentsConfig } from '../../../config/appointments.config';
+import { normalizePhone } from '../../../common/utils/normalize-phone';
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 import { NotificationsService } from '../../notifications/application/notifications.service';
@@ -31,6 +32,7 @@ import type { CreateAppointmentProtocolDto } from '../presentation/dto/create-ap
 import { ListAppointmentsQueryDto } from '../presentation/dto/list-appointments-query.dto';
 import { RescheduleAppointmentDto } from '../presentation/dto/reschedule-appointment.dto';
 import type { UpdateAppointmentProtocolDto } from '../presentation/dto/update-appointment-protocol.dto';
+import type { CreateWalkInClientDto } from '../presentation/dto/create-walk-in-client.dto';
 
 const SLOT_STEP_MINUTES = 30;
 
@@ -103,10 +105,10 @@ export class AppointmentsService {
     const durationMinutes = service.durationMinutes;
     const openingHours = studio.openingHours;
 
-    const anchorLocalNoon = fromZonedTime(
-      `${formatInTimeZone(new Date(), tz, 'yyyy-MM-dd')}T12:00:00`,
-      tz,
-    );
+    const fromDateRaw = query.fromDate?.trim();
+    const anchorYmd = fromDateRaw ? fromDateRaw : formatInTimeZone(new Date(), tz, 'yyyy-MM-dd');
+
+    const anchorLocalNoon = fromZonedTime(`${anchorYmd}T12:00:00`, tz);
 
     const rangeStartUtc = addDays(anchorLocalNoon, -1);
     const rangeEndUtc = addDays(anchorLocalNoon, horizonDays + 1);
@@ -345,9 +347,26 @@ export class AppointmentsService {
     };
   }
 
-  async create(dto: CreateAppointmentDto) {
+  async create(dto: CreateAppointmentDto, actor?: JwtAccessPayload) {
     if (!dto.clientUserId && !dto.walkInClientId) {
       throw new BadRequestException('Нужно передать clientUserId или walkInClientId');
+    }
+
+    if (actor?.role === UserRole.Specialist) {
+      const profile = await this.prisma.specialistProfile.findUnique({
+        where: { userId: actor.sub },
+        select: { id: true, studioId: true, studios: { select: { studioId: true } } },
+      });
+      if (!profile) {
+        throw new ForbiddenException('Профиль специалиста не найден');
+      }
+      if (dto.specialistId !== profile.id) {
+        throw new ForbiddenException('Можно записать клиента только на приём к себе');
+      }
+      const allowedStudios = new Set<string>([profile.studioId, ...profile.studios.map((s) => s.studioId)]);
+      if (!allowedStudios.has(dto.studioId)) {
+        throw new ForbiddenException('Нет доступа к этой студии');
+      }
     }
 
     const [service, specialist, studio] = await Promise.all([
@@ -435,17 +454,44 @@ export class AppointmentsService {
     return created;
   }
 
-  list(query: ListAppointmentsQueryDto) {
-    return this.prisma.appointment.findMany({
-      where: {
-        studioId: query.studioId,
-        specialistId: query.specialistId,
-        clientUserId: query.clientUserId,
-        startsAt: {
-          gte: query.from,
-          lte: query.to,
+  async list(query: ListAppointmentsQueryDto, actor: JwtAccessPayload) {
+    const where: Prisma.AppointmentWhereInput = {};
+    if (query.studioId) where.studioId = query.studioId;
+    if (query.specialistId) where.specialistId = query.specialistId;
+    if (query.clientUserId) where.clientUserId = query.clientUserId;
+    if (query.from || query.to) {
+      where.startsAt = {};
+      if (query.from) where.startsAt.gte = query.from;
+      if (query.to) where.startsAt.lte = query.to;
+    }
+
+    if (actor.role === UserRole.Specialist) {
+      const profile = await this.prisma.specialistProfile.findUnique({
+        where: { userId: actor.sub },
+        select: {
+          id: true,
+          studioId: true,
+          studios: { select: { studioId: true } },
         },
-      },
+      });
+      if (!profile) {
+        throw new ForbiddenException('Профиль специалиста не найден');
+      }
+      if (query.specialistId && query.specialistId !== profile.id) {
+        throw new ForbiddenException();
+      }
+      where.specialistId = profile.id;
+      const allowedStudios = new Set<string>([
+        profile.studioId,
+        ...profile.studios.map((item) => item.studioId),
+      ]);
+      if (query.studioId && !allowedStudios.has(query.studioId)) {
+        throw new ForbiddenException('Нет доступа к этой студии');
+      }
+    }
+
+    return this.prisma.appointment.findMany({
+      where,
       include: {
         client: {
           select: {
@@ -454,10 +500,99 @@ export class AppointmentsService {
             lastName: true,
           },
         },
+        walkIn: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+          },
+        },
+        service: { select: { id: true, name: true } },
+        studio: { select: { id: true, name: true, city: true } },
+        specialist: {
+          select: {
+            id: true,
+            user: { select: { firstName: true, lastName: true } },
+          },
+        },
       },
       orderBy: [{ startsAt: 'asc' }],
-      take: 200,   // защита от случайного дампа всей таблицы
+      take: 200, // защита от случайного дампа всей таблицы
     });
+  }
+
+  async searchWalkInClients(actor: JwtAccessPayload, studioId: string, q?: string) {
+    await this.assertStaffCanManageStudio(actor, studioId);
+    const trimmed = q?.trim() ?? '';
+    if (trimmed.length < 2) {
+      return [];
+    }
+    let normalizedPhone: string | undefined;
+    try {
+      const digits = trimmed.replace(/\D/g, '');
+      if (digits.length >= 10) {
+        normalizedPhone = normalizePhone(trimmed);
+      }
+    } catch {
+      normalizedPhone = undefined;
+    }
+    const orClause: Prisma.WalkInClientWhereInput[] = [
+      { firstName: { contains: trimmed, mode: 'insensitive' } },
+      { lastName: { contains: trimmed, mode: 'insensitive' } },
+      { phone: { contains: trimmed.replace(/\s/g, '') } },
+    ];
+    if (normalizedPhone) {
+      orClause.push({ phone: normalizedPhone });
+    }
+    const where: Prisma.WalkInClientWhereInput = { studioId, OR: orClause };
+    return this.prisma.walkInClient.findMany({
+      where,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        linkedUserId: true,
+        createdAt: true,
+      },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+      take: 30,
+    });
+  }
+
+  async createWalkInClient(actor: JwtAccessPayload, dto: CreateWalkInClientDto) {
+    await this.assertStaffCanManageStudio(actor, dto.studioId);
+    const phone = normalizePhone(dto.phone);
+    const firstName = dto.firstName.trim();
+    const lastName = dto.lastName.trim();
+    if (!firstName || !lastName) {
+      throw new BadRequestException('Укажите имя и фамилию');
+    }
+    try {
+      return await this.prisma.walkInClient.create({
+        data: {
+          studioId: dto.studioId,
+          firstName,
+          lastName,
+          phone,
+          note: dto.note?.trim() || null,
+        },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          phone: true,
+          linkedUserId: true,
+          createdAt: true,
+        },
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException('В этой студии уже есть карточка с таким телефоном');
+      }
+      throw e;
+    }
   }
 
   async confirm(id: string, actor: JwtAccessPayload) {

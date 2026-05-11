@@ -120,9 +120,12 @@ export default function OtpScreen() {
           }
         }
         if (cancelled) return;
-        const firstNameOk = auth.user.firstName.trim().length > 0;
-        const lastNameOk = auth.user.lastName.trim().length > 0;
-        if (!firstNameOk || !lastNameOk) {
+        const fn = auth.user.firstName.trim();
+        const ln = auth.user.lastName.trim();
+        const hasRealName = fn.length > 0 && ln.length > 0;
+        // Раньше API подставлял «Новый» / «Клиент» — считаем это незаполненным профилем.
+        const isLegacyPlaceholder = fn === 'Новый' && ln === 'Клиент';
+        if (!hasRealName || isLegacyPlaceholder) {
           router.replace('/(auth)/name');
           return;
         }

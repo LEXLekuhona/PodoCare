@@ -11,18 +11,48 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 
+export class PhysicalGoodStudioInventoryDto {
+  @IsUUID()
+  studioId!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isAvailable?: boolean;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  stock?: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Цена в рублях для конкретной студии; null = базовая цена.' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  priceRubles?: number | null;
+}
+
 export class CreatePhysicalGoodDto {
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(120)
-  sku!: string;
+  sku?: string;
 
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(160)
-  slug!: string;
+  slug?: string;
 
   @IsString()
   @MinLength(1)
@@ -76,4 +106,11 @@ export class CreatePhysicalGoodDto {
   @IsBoolean()
   @Type(() => Boolean)
   isActive?: boolean;
+
+  @ApiPropertyOptional({ type: () => [PhysicalGoodStudioInventoryDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PhysicalGoodStudioInventoryDto)
+  studioInventory?: PhysicalGoodStudioInventoryDto[];
 }

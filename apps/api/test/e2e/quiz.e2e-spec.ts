@@ -185,5 +185,90 @@ describe('Quiz flow (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`);
     expect(feedRes.status).toBe(200);
     expect(feedRes.body.items[0].id).toBe(taggedItem.id);
+
+    const meRes = await request(app.getHttpServer())
+      .get('/api/v1/me')
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(meRes.status).toBe(200);
+    expect(meRes.body.diagnosticQuiz).toMatchObject({
+      quizId: quiz.id,
+      resultLevel: 'HIGH',
+      outcomeTitle: 'Высокий риск',
+      score: expect.any(Number),
+    });
+  });
+
+  it('GET /quiz/published/:id is 404 for draft, 200 for published', async () => {
+    const network = await prisma.network.create({ data: { name: 'Quiz Pub', slug: 'quiz-pub-net' } });
+    const draft = await prisma.diagnosticQuiz.create({
+      data: { networkId: network.id, slug: 'draft-q', title: 'Черновик', isPublished: false },
+    });
+    const pub = await prisma.diagnosticQuiz.create({
+      data: { networkId: network.id, slug: 'pub-q', title: 'В эфире', isPublished: true },
+    });
+    const draftRes = await request(app.getHttpServer()).get(`/api/v1/quiz/published/${draft.id}`);
+    expect(draftRes.status).toBe(404);
+    const pubRes = await request(app.getHttpServer()).get(`/api/v1/quiz/published/${pub.id}`);
+    expect(pubRes.status).toBe(200);
+    expect(pubRes.body).toMatchObject({ id: pub.id, title: 'В эфире' });
+  });
+
+  it('quiz admin: 401 without token, 403 for client', async () => {
+    const noAuthList = await request(app.getHttpServer()).get('/api/v1/quiz/admin');
+    expect(noAuthList.status).toBe(401);
+    const noAuthPost = await request(app.getHttpServer()).post('/api/v1/quiz/admin').send({});
+    expect(noAuthPost.status).toBe(401);
+    const noAuthPatch = await request(app.getHttpServer())
+      .patch('/api/v1/quiz/admin/00000000-0000-0000-0000-000000000001')
+      .send({});
+    expect(noAuthPatch.status).toBe(401);
+
+    const network = await prisma.network.create({ data: { name: 'Quiz Auth', slug: 'quiz-auth-net' } });
+    const studio = await prisma.studio.create({
+      data: {
+        networkId: network.id,
+        name: 'QS',
+        address: 'a',
+        city: 'Moscow',
+        openingHours: {},
+      },
+    });
+    const client = await prisma.user.create({
+      data: {
+        studioId: studio.id,
+        role: UserRole.Client,
+        phone: '+79993330001',
+        firstName: 'C',
+        lastName: 'C',
+      },
+    });
+    const requestOtp = await request(app.getHttpServer()).post('/api/v1/auth/otp/request').send({ phone: client.phone });
+    const verifyOtp = await request(app.getHttpServer()).post('/api/v1/auth/otp/verify').send({
+      phone: client.phone,
+      code: requestOtp.body.debugCode,
+      deviceType: 'mobile_ios',
+    });
+    expect(verifyOtp.status).toBe(201);
+    const token = verifyOtp.body.tokens.accessToken as string;
+
+    const forbiddenList = await request(app.getHttpServer()).get('/api/v1/quiz/admin').set('Authorization', `Bearer ${token}`);
+    expect(forbiddenList.status).toBe(403);
+    const forbiddenPost = await request(app.getHttpServer())
+      .post('/api/v1/quiz/admin')
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+    expect(forbiddenPost.status).toBe(403);
+    const forbiddenPatch = await request(app.getHttpServer())
+      .patch('/api/v1/quiz/admin/00000000-0000-0000-0000-000000000002')
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+    expect(forbiddenPatch.status).toBe(403);
+  });
+
+  it('merge-with-user: 401 without token', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/quiz/sessions/00000000-0000-0000-0000-000000000099/merge-with-user')
+      .send({});
+    expect(res.status).toBe(401);
   });
 });

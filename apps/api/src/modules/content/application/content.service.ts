@@ -19,9 +19,11 @@ import {
   UserRole,
   type ClientContentCtaClickResponse,
   type ClientContentFeedResponse,
+  type ClientContentItemDetail,
   type ClientContentProgressSaved,
 } from '@srs/shared-types';
 
+import { validateContentItemBody } from './content-body.validator';
 import { resolvePaywallMode } from './content-funnel.policy';
 // Nest constructor injection: классы нужны как значения рантайма, не только как типы.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- DI
@@ -162,6 +164,7 @@ export class ContentService {
     if (series.networkId !== dto.networkId) {
       throw new ConflictException('Серия принадлежит другой сети');
     }
+    validateContentItemBody(dto.format, dto.body);
     const slug = dto.slug?.trim() ?? `${slugBaseFromTitle(dto.title)}-${uniqueSuffix()}`;
     const isPublished = dto.status === 'published';
     try {
@@ -197,6 +200,9 @@ export class ContentService {
     const existing = await this.prisma.contentItem.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Материал не найден');
     await this.assertAdminNetworkAccess(user, existing.networkId);
+    if (dto.body !== undefined) {
+      validateContentItemBody(dto.format ?? existing.format, dto.body);
+    }
     const isPublished = dto.status === 'published' ? true : dto.status === 'draft' ? false : undefined;
     try {
       return await this.prisma.contentItem.update({
@@ -399,6 +405,77 @@ export class ContentService {
     });
     // Prisma $Enums совпадают по строковым значениям с @srs/shared-types, но TS различает типы.
     return { items: feedItems } as ClientContentFeedResponse;
+  }
+
+  /**
+   * Возвращает детальный материал для клиента (экран чтения).
+   * Доступ выдаётся через {@link assertClientCanAccessItem} (404 / 403 паттерны).
+   */
+  async getClientItem(userId: string, itemId: string): Promise<ClientContentItemDetail> {
+    const item = await this.assertClientCanAccessItem(userId, itemId);
+    const [ctas, progress] = await Promise.all([
+      this.prisma.contentCta.findMany({
+        where: { itemId, isActive: true },
+        orderBy: { sortOrder: 'asc' },
+        select: {
+          id: true,
+          target: true,
+          label: true,
+          subtitle: true,
+          sortOrder: true,
+          targetProgramId: true,
+          targetSeriesId: true,
+          targetServiceId: true,
+          targetPhysicalGoodId: true,
+          targetQuizId: true,
+          targetExternalUrl: true,
+        },
+      }),
+      this.prisma.contentItemProgress.findUnique({
+        where: { userId_itemId: { userId, itemId } },
+        select: { percent: true, completedAt: true },
+      }),
+    ]);
+
+    return {
+      id: item.id,
+      title: item.title,
+      description: item.description,
+      coverImageUrl: item.coverImageUrl,
+      publishedAt: item.publishedAt ? item.publishedAt.toISOString() : null,
+      format: item.format,
+      seriesId: item.seriesId,
+      audience: item.audience,
+      paywall: {
+        // Если запрос дошёл до этой ветки — assertClientCanAccessItem уже подтвердил доступ,
+        // поэтому isLocked=false. mode/price оставляем для информационного показа в UI.
+        mode: resolvePaywallMode(item.series.priceMinor),
+        isLocked: false,
+        priceMinor: item.series.priceMinor,
+        currency: item.series.currency,
+      },
+      progress: {
+        percent: progress?.percent ?? 0,
+        completedAt: progress?.completedAt ? progress.completedAt.toISOString() : null,
+      },
+      ctas: ctas.map((c) => ({
+        id: c.id,
+        target: c.target,
+        label: c.label,
+        subtitle: c.subtitle ?? null,
+        sortOrder: c.sortOrder,
+        targetProgramId: c.targetProgramId ?? null,
+        targetSeriesId: c.targetSeriesId ?? null,
+        targetServiceId: c.targetServiceId ?? null,
+        targetPhysicalGoodId: c.targetPhysicalGoodId ?? null,
+        targetQuizId: c.targetQuizId ?? null,
+        targetExternalUrl: c.targetExternalUrl ?? null,
+      })),
+      body: item.body as unknown,
+      durationSeconds: item.durationSeconds,
+      isFreePreview: item.isFreePreview,
+      seriesTitle: item.series.title,
+    } as ClientContentItemDetail;
   }
 
   private async getPreferredTagsFromLatestQuiz(userId?: string): Promise<Set<string>> {

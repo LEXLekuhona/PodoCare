@@ -22,6 +22,7 @@ import { ContentModule } from './modules/content/content.module';
 import { EducationModule } from './modules/education/education.module';
 import { FaqModule } from './modules/faq/faq.module';
 import { HealthModule } from './modules/health/health.module';
+import { MonetizationModule } from './modules/monetization/monetization.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { QuizModule } from './modules/quiz/quiz.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
@@ -103,6 +104,7 @@ import { UsersModule } from './modules/users/users.module';
     AdminCatalogModule,
     FaqModule,
     HealthModule,
+    MonetizationModule,
     NotificationsModule,
     QuizModule,
     ReviewsModule,

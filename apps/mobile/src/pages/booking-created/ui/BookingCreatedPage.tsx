@@ -1,11 +1,12 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useGlobalSearchParams, useLocalSearchParams } from 'expo-router';
-import { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
 import { invalidateHomeNextAppointment } from '@/features/appointment/next-appointment-session';
+import { syncAppointmentToDeviceCalendar } from '@/features/calendar/sync-appointment-event';
 import { formatRuAppointmentDateTime } from '@/shared/lib/format-appointment';
 import { firstRouteParam, sanitizeRouteParam } from '@/shared/navigation/route-params';
 import { SafeAreaPadding } from '@/shared/ui/safe-area';
@@ -45,6 +46,15 @@ async function goHomeTabs(studioId?: string): Promise<void> {
   router.dismissTo('/(app)/(tabs)');
 }
 
+/** Успешно синхронизированные слоты — не создаём дубликат при повторном mount. */
+const syncedAppointmentKeys = new Set<string>();
+/** Защита от параллельного sync по одному ключу (Strict Mode / быстрые ре-рендеры). */
+const syncInFlightKeys = new Set<string>();
+
+function appointmentSyncKey(startsAtIso: string, studioId: string | undefined): string {
+  return `${startsAtIso}\0${studioId ?? ''}`;
+}
+
 export function BookingCreatedPage() {
   const lp = useLocalSearchParams();
   const gp = useGlobalSearchParams();
@@ -57,12 +67,137 @@ export function BookingCreatedPage() {
   const studioId = sanitizeRouteParam(firstRouteParam(lp.studioId, gp.studioId)) ?? undefined;
   const studioName = sanitizeRouteParam(firstRouteParam(lp.studioName, gp.studioName)) ?? 'Студия';
   const studioAddress = sanitizeRouteParam(firstRouteParam(lp.studioAddress, gp.studioAddress)) ?? '';
+  const serviceName = sanitizeRouteParam(firstRouteParam(lp.serviceName, gp.serviceName)) ?? '';
+  const durationMinutesRaw = sanitizeRouteParam(firstRouteParam(lp.durationMinutes, gp.durationMinutes));
+
+  const [calendarAdded, setCalendarAdded] = useState<boolean | null>(null);
+  const [calendarBusy, setCalendarBusy] = useState(false);
+
+  const durationMinutes = useMemo(() => {
+    const n = durationMinutesRaw != null ? Number(durationMinutesRaw) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : 60;
+  }, [durationMinutesRaw]);
 
   const dateOnly = useMemo(() => (startsAt ? formatDateLineRu(startsAt) : '—'), [startsAt]);
   const timeOnly = useMemo(() => (startsAt ? formatRuAppointmentDateTime(startsAt).timeLine : '—'), [startsAt]);
   const weekdayLine = useMemo(() => (startsAt ? formatWeekdayLongRu(startsAt) : ''), [startsAt]);
 
   const invalid = !startsAt;
+
+  useEffect(() => {
+    if (invalid || !startsAt) return;
+    const key = appointmentSyncKey(startsAt, studioId);
+    if (syncedAppointmentKeys.has(key)) {
+      setCalendarAdded(true);
+      return;
+    }
+    if (syncInFlightKeys.has(key)) return;
+    syncInFlightKeys.add(key);
+
+    const startDate = new Date(startsAt);
+    if (Number.isNaN(startDate.getTime())) {
+      syncInFlightKeys.delete(key);
+      return;
+    }
+    const endDate = new Date(startDate.getTime() + durationMinutes * 60 * 1000);
+    const title = serviceName.trim()
+      ? `Приём: ${serviceName.trim()}`
+      : `Приём в ${studioName}`;
+    const location = studioAddress.trim()
+      ? `${studioName}${studioAddress ? `, ${studioAddress}` : ''}`
+      : studioName;
+    const notesLines = [
+      serviceName.trim() ? `Услуга: ${serviceName.trim()}` : null,
+      specialistName.trim() ? `Специалист: ${specialistName.trim()}` : null,
+      studioName.trim() ? `Студия: ${studioName.trim()}` : null,
+      studioAddress.trim() ? `Адрес: ${studioAddress.trim()}` : null,
+    ].filter(Boolean);
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const ok = await syncAppointmentToDeviceCalendar({
+          startsAt: startDate,
+          endDate,
+          title,
+          location,
+          notes: notesLines.join('\n'),
+        });
+        if (cancelled) return;
+        if (ok) syncedAppointmentKeys.add(key);
+        setCalendarAdded(ok);
+      } finally {
+        syncInFlightKeys.delete(key);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    invalid,
+    startsAt,
+    studioId,
+    durationMinutes,
+    serviceName,
+    studioName,
+    studioAddress,
+    specialistName,
+  ]);
+
+  const onAddToCalendarPress = useCallback(() => {
+    if (calendarBusy || invalid || !startsAt) return;
+    setCalendarBusy(true);
+    void (async () => {
+      try {
+        const startDate = new Date(startsAt);
+        if (Number.isNaN(startDate.getTime())) {
+          setCalendarAdded(false);
+          return;
+        }
+        const endDate = new Date(startDate.getTime() + durationMinutes * 60 * 1000);
+        const title = serviceName.trim()
+          ? `Приём: ${serviceName.trim()}`
+          : `Приём в ${studioName}`;
+        const location = studioAddress.trim()
+          ? `${studioName}${studioAddress ? `, ${studioAddress}` : ''}`
+          : studioName;
+        const notesLines = [
+          serviceName.trim() ? `Услуга: ${serviceName.trim()}` : null,
+          specialistName.trim() ? `Специалист: ${specialistName.trim()}` : null,
+          studioName.trim() ? `Студия: ${studioName.trim()}` : null,
+          studioAddress.trim() ? `Адрес: ${studioAddress.trim()}` : null,
+        ].filter(Boolean);
+        const ok = await syncAppointmentToDeviceCalendar({
+          startsAt: startDate,
+          endDate,
+          title,
+          location,
+          notes: notesLines.join('\n'),
+        });
+        setCalendarAdded(ok);
+        if (ok) syncedAppointmentKeys.add(appointmentSyncKey(startsAt, studioId));
+        if (!ok) {
+          Alert.alert(
+            'Календарь',
+            'Не удалось добавить событие. Проверьте разрешение на доступ к календарю в настройках устройства.',
+          );
+        }
+      } finally {
+        setCalendarBusy(false);
+      }
+    })();
+  }, [
+    calendarBusy,
+    invalid,
+    startsAt,
+    studioId,
+    durationMinutes,
+    serviceName,
+    studioName,
+    studioAddress,
+    specialistName,
+  ]);
 
   return (
     <View style={styles.root} lightColor={SURFACE} darkColor="#06130E">
@@ -153,6 +288,29 @@ export function BookingCreatedPage() {
                   </View>
                 </RNView>
               </View>
+
+              {calendarAdded === false ? (
+                <Pressable
+                  onPress={onAddToCalendarPress}
+                  disabled={calendarBusy}
+                  style={({ pressed }) => [styles.calendarBtn, pressed && styles.pressed, calendarBusy && styles.calendarBtnDisabled]}
+                >
+                  {calendarBusy ? (
+                    <ActivityIndicator color={PRIMARY_CONTAINER} />
+                  ) : (
+                    <>
+                      <FontAwesome name="calendar-plus-o" size={18} color={PRIMARY_CONTAINER} />
+                      <Text style={styles.calendarBtnText} lightColor={ON_SURFACE} darkColor="#F5FBF7">
+                        Добавить в календарь телефона
+                      </Text>
+                    </>
+                  )}
+                </Pressable>
+              ) : calendarAdded === true ? (
+                <Text style={styles.calendarOk} lightColor={OUTLINE} darkColor="rgba(255,255,255,0.45)">
+                  Событие добавлено в календарь
+                </Text>
+              ) : null}
 
               <View style={styles.actions} lightColor="transparent" darkColor="transparent">
                 <Pressable onPress={() => void goHomeTabs(studioId)} style={({ pressed }) => [styles.primaryWrap, pressed && styles.pressed]}>
@@ -322,6 +480,31 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_500Medium',
     fontSize: 12,
     lineHeight: 17,
+  },
+  calendarBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    width: '100%',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(45, 106, 79, 0.35)',
+    backgroundColor: 'rgba(177, 240, 206, 0.2)',
+  },
+  calendarBtnDisabled: {
+    opacity: 0.6,
+  },
+  calendarBtnText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 15,
+  },
+  calendarOk: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+    textAlign: 'center',
   },
   actions: {
     width: '100%',

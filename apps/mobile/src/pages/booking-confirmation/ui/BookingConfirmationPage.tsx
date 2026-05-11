@@ -143,6 +143,8 @@ export function BookingConfirmationPage() {
           studioId: studio.id,
           startsAt,
           specialistName,
+          serviceName,
+          ...(durationMinutesRaw ? { durationMinutes: durationMinutesRaw } : {}),
           ...(specialistTitle ? { specialistTitle } : {}),
           studioName: studio.name,
           studioAddress: studio.address,

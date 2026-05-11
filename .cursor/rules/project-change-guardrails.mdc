@@ -1,0 +1,10 @@
+---
+description: Общие guardrails для API, миграций и документации проекта
+alwaysApply: true
+---
+
+# Project Change Guardrails
+
+- Новые protected endpoints обязаны иметь e2e-покрытие на `401 Unauthorized` и `403 Forbidden`.
+- Схему базы менять только через Prisma migrations. При планировании и реализации миграций учитывать rollout-порядок: сначала безопасные additive-изменения, затем код, затем cleanup/backfill при необходимости.
+- `docs/roadmap.md` обновлять синхронно с кодом, когда изменение влияет на roadmap, статус фичи, scope или очередность работ.

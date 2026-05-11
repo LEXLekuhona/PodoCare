@@ -12,10 +12,10 @@ import { RolesGuard } from '../../auth/infrastructure/roles.guard';
 import { QuizService } from '../application/quiz.service';
 // Nest ValidationPipe relies on runtime metadata for DTO classes.
 // `import type` breaks `design:paramtypes`, causing whitelist validation to reject all properties.
-import { CreateQuizAdminDto } from './dto/create-quiz-admin.dto';
-import { CreateQuizSessionDto } from './dto/create-quiz-session.dto';
-import { SubmitQuizAnswerDto } from './dto/submit-quiz-answer.dto';
-import { UpdateQuizAdminDto } from './dto/update-quiz-admin.dto';
+import type { CreateQuizAdminDto } from './dto/create-quiz-admin.dto';
+import type { CreateQuizSessionDto } from './dto/create-quiz-session.dto';
+import type { SubmitQuizAnswerDto } from './dto/submit-quiz-answer.dto';
+import type { UpdateQuizAdminDto } from './dto/update-quiz-admin.dto';
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 
 const QUIZ_ADMIN_ROLES = [UserRole.SuperAdmin, UserRole.NetworkOwner, UserRole.StudioAdmin] as const;
@@ -29,6 +29,12 @@ export class QuizController {
   @ApiOperation({ summary: 'Опубликованный квиз для мобильного клиента.' })
   getActiveQuiz() {
     return this.quizService.getActiveQuiz();
+  }
+
+  @Get('published/:id')
+  @ApiOperation({ summary: 'Опубликованный квиз по id (CTA / deep-link).' })
+  getPublishedById(@Param('id', ParseUUIDPipe) id: string) {
+    return this.quizService.getPublishedQuizById(id);
   }
 
   @Get('admin')
