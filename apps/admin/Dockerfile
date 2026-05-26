@@ -9,7 +9,10 @@ RUN npm install -g pnpm@10.33.0
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+# frozen-lockfile требует package.json всех workspace-пакетов из lockfile.
 COPY apps/admin/package.json ./apps/admin/
+COPY apps/api/package.json ./apps/api/
+COPY apps/mobile/package.json ./apps/mobile/
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/tsconfig/package.json ./packages/tsconfig/
 COPY packages/eslint-config/package.json ./packages/eslint-config/
