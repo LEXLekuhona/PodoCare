@@ -3,7 +3,7 @@
 FROM node:22.12-alpine AS build
 
 RUN apk add --no-cache python3 make g++
-RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
+RUN npm install -g pnpm@10.33.0
 
 WORKDIR /app
 
@@ -26,7 +26,7 @@ RUN pnpm --filter @srs/shared-types build \
 FROM node:22.12-alpine AS runtime
 
 RUN apk add --no-cache openssl \
-  && corepack enable && corepack prepare pnpm@10.33.0 --activate
+  && npm install -g pnpm@10.33.0
 
 WORKDIR /app
 

@@ -3,7 +3,8 @@
 # Сборка статики админки (React + Vite). URL API задаётся на этапе build (ARG VITE_API_URL).
 FROM node:22.12-alpine AS build
 
-RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
+# Corepack в node:22-alpine иногда не проходит проверку подписи pnpm — ставим напрямую.
+RUN npm install -g pnpm@10.33.0
 
 WORKDIR /app
 
