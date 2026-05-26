@@ -8,6 +8,7 @@ RUN npm install -g pnpm@10.33.0
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY docker/npm.ci.rc ./docker/npm.ci.rc
 COPY apps/admin/package.json ./apps/admin/
 COPY apps/api/package.json ./apps/api/
 COPY apps/mobile/package.json ./apps/mobile/
@@ -15,7 +16,10 @@ COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/tsconfig/package.json ./packages/tsconfig/
 COPY packages/eslint-config/package.json ./packages/eslint-config/
 
-RUN pnpm install --frozen-lockfile --filter @srs/api...
+ARG NPM_REGISTRY=https://registry.npmjs.org/
+RUN cat docker/npm.ci.rc >> .npmrc \
+  && pnpm config set registry "$NPM_REGISTRY" \
+  && pnpm install --frozen-lockfile --filter @srs/api...
 
 COPY packages/shared-types ./packages/shared-types
 COPY packages/tsconfig ./packages/tsconfig

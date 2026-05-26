@@ -1,0 +1,5 @@
+# Подключается в Docker-сборке (см. apps/*/Dockerfile).
+ignore-workspace-root-dependencies=true
+fetch-timeout=600000
+fetch-retries=5
+network-concurrency=4

@@ -17,6 +17,8 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org/}
     image: srs-api:local
     container_name: srs-api
     restart: unless-stopped
@@ -62,6 +64,7 @@ services:
       dockerfile: apps/admin/Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:3000/api/v1}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org/}
     image: srs-admin:local
     container_name: srs-admin
     restart: unless-stopped
