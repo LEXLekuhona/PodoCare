@@ -31,8 +31,9 @@ apps/mobile/.env
 **/test-results
 **/__snapshots__
 
-# Mobile app (not needed for API/admin images)
-apps/mobile
+# Mobile sources не нужны в образе, но package.json нужен pnpm lockfile
+apps/mobile/**
+!apps/mobile/package.json
 
 # Local data
 apps/api/uploads
