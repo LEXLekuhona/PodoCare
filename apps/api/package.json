@@ -28,6 +28,7 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "create-dev-admin": "tsx --env-file=.env scripts/create-dev-admin.ts",
+    "create-dev-admin:docker": "tsx scripts/create-dev-admin.ts",
     "import-health-concerns": "tsx --env-file=.env scripts/import-health-concerns.ts",
     "prisma:seed": "tsx prisma/seed.ts",
     "prisma:reset": "prisma migrate reset --force",

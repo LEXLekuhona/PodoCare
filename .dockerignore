@@ -1,0 +1,47 @@
+# Git and IDE
+.git
+.github
+.cursor
+.idea
+.vscode
+**/.DS_Store
+
+# Dependencies and caches (reinstalled in image)
+**/node_modules
+.pnpm-store
+.turbo
+
+# Build outputs (rebuilt in image)
+**/dist
+**/build
+**/.next
+**/.expo
+**/.nest
+**/*.tsbuildinfo
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+apps/admin/.env
+apps/mobile/.env
+
+# Tests and coverage
+**/coverage
+**/test-results
+**/__snapshots__
+
+# Mobile app (not needed for API/admin images)
+apps/mobile
+
+# Local data
+apps/api/uploads
+**/*.db
+**/*.db-journal
+local-backup.sql
+
+# Docs and misc
+docs
+
+# Logs
+**/*.log

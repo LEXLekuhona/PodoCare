@@ -115,6 +115,35 @@ pnpm --filter @srs/api dev
 | `pnpm docker:up`       | поднимает Postgres + Redis + MinIO + Adminer    |
 | `pnpm docker:down`     | останавливает                                   |
 | `pnpm docker:reset`    | сбрасывает volumes и запускает заново           |
+| `pnpm docker:up:prod`  | инфраструктура + API + админка (Docker)         |
+| `pnpm docker:build:prod` | пересборка образов API и admin                |
+
+### Docker: API + админка на сервере
+
+Образы: `apps/api/Dockerfile`, `apps/admin/Dockerfile` (nginx со статикой Vite). Compose-оверлей: `docker-compose.prod.yml` (использует Postgres/Redis/MinIO из корневого `docker-compose.yml`).
+
+```bash
+cp .env.example .env
+# JWT_*, DATA_ENCRYPTION_KEY — обязательно сменить для prod
+# Для локального Docker-стека достаточно значений по умолчанию из .env.example
+
+pnpm docker:up:prod
+# Админка: http://localhost:8080
+# API:     http://localhost:3000/api/v1
+
+# Первый супер-админ (только dev/staging):
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec api pnpm create-dev-admin:docker
+```
+
+На **реальном домене** перед сборкой задайте URL API для браузера (вшивается в статику админки):
+
+```bash
+export VITE_API_URL=https://api.example.com/api/v1
+export API_CORS_ORIGINS=https://admin.example.com
+pnpm docker:build:prod && pnpm docker:up:prod
+```
+
+Подробнее по переменным: `apps/admin/.env.docker.example`. API при старте выполняет `prisma migrate deploy` (`RUN_DB_MIGRATIONS=true`, можно отключить для отдельного job миграций).
 
 ### API (`apps/api`)
 

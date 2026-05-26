@@ -1,0 +1,80 @@
+# Продакшен-стек: инфраструктура (docker-compose.yml) + API + админка.
+#
+# Локально на сервере:
+#   cp .env.example .env   # задайте JWT_*, DATA_ENCRYPTION_KEY и т.д.
+#   pnpm docker:up:prod
+#
+# Сборка с публичным URL API для браузера (обязательно при деплое на домены):
+#   VITE_API_URL=https://api.example.com/api/v1 pnpm docker:build:prod
+#
+# Первый вход в админку (после старта API):
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml exec api \
+#     pnpm create-dev-admin:docker
+# (DEV_ADMIN_* из env_file / environment compose)
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: srs-api:local
+    container_name: srs-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-srs}:${POSTGRES_PASSWORD:-srs_dev_pwd}@postgres:5432/${POSTGRES_DB:-srs}?schema=public
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_FORCE_PATH_STYLE: "true"
+      API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:8080}
+      RUN_DB_MIGRATIONS: ${RUN_DB_MIGRATIONS:-true}
+    ports:
+      - "${API_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - srs
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/v1/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  admin:
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000/api/v1}
+    image: srs-admin:local
+    container_name: srs-admin
+    restart: unless-stopped
+    ports:
+      - "${ADMIN_HTTP_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - srs
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
