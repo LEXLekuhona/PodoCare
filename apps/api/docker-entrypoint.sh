@@ -8,4 +8,9 @@ if [ "${RUN_DB_MIGRATIONS:-true}" = "true" ]; then
   pnpm exec prisma migrate deploy
 fi
 
-exec node dist/main.js
+if [ -f "dist/main.js" ]; then
+  exec node dist/main.js
+fi
+
+# В этой репе tsconfig rootDir = "./", поэтому Nest build кладёт entrypoint в dist/src/main.js.
+exec node dist/src/main.js
