@@ -89,6 +89,7 @@ export default function LoginPhoneScreen() {
               <View style={styles.row} lightColor="transparent" darkColor="transparent">
                 <Text style={styles.prefix}>+7</Text>
                 <TextInput
+                  
                   value={formatted}
                   onChangeText={(t) => setDigits(onlyDigits(t))}
                   placeholder="(999) 999-99-99"
@@ -288,6 +289,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
     paddingVertical: 0,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
+    color: "#FFFFFF"
   },
   flex: { flex: 1 },
   bottom: {

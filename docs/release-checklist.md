@@ -1,6 +1,6 @@
 # Release Checklist
 
-Этот чеклист обязателен для каждого релиза (включая hotfix), чтобы исключить регрессии по ядру и инфраструктуре. Задачи до первого коммерческого выката (облако, сторы, юристы): `docs/launch-backlog.md`.
+Этот чеклист обязателен для каждого релиза (включая hotfix), чтобы исключить регрессии по ядру и инфраструктуре. Задачи до первого коммерческого выката (облако, сторы, юристы): `docs/launch-backlog.md` (юридический трек — раздел 5).
 
 ## 1) Core Stability Gate (обязательно перед merge)
 
@@ -41,6 +41,6 @@
 
 ## 7) Финальная проверка перед релизом
 
-- [ ] Выполнен минимальный smoke в staging (шаги: `docs/infrastructure-and-operations.md` §3).
-- [ ] Подготовлен rollback-план (приложение + миграции: `docs/infrastructure-and-operations.md` §4).
+- [ ] Выполнен минимальный smoke в staging (шаги: раздел 3 в `docs/infrastructure-and-operations.md`).
+- [ ] Подготовлен rollback-план (приложение + миграции: раздел 4 в `docs/infrastructure-and-operations.md`).
 - [ ] Зафиксированы release notes по шаблону `docs/release-notes-template.md` (изменения, риски, мониторинг первых часов).

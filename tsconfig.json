@@ -5,7 +5,10 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["apps/mobile/src/*", "apps/mobile/*"]
+      "@/*": [
+        "apps/mobile/src/*",
+        "apps/mobile/*"
+      ]
     }
   },
   "files": [],
@@ -19,8 +22,6 @@
   ],
   "include": [
     "**/*.ts",
-    "**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
+    "**/*.tsx"
   ]
 }
