@@ -8,10 +8,11 @@ import { AuthService } from '../application/auth.service';
 
 // Nest ValidationPipe relies on runtime metadata for DTO classes.
 // `import type` breaks `design:paramtypes`, causing whitelist validation to reject all properties.
-import type { RefreshTokenDto } from './dto/refresh-token.dto';
-import type { RequestOtpDto } from './dto/request-otp.dto';
-import type { StaffLoginDto } from './dto/staff-login.dto';
-import type { VerifyOtpDto } from './dto/verify-otp.dto';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- DTO classes for @Body() metadata
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { RequestOtpDto } from './dto/request-otp.dto';
+import { StaffLoginDto } from './dto/staff-login.dto';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
 
 const IS_TEST = process.env.NODE_ENV === 'test';
 const OTP_REQUEST_LIMIT = IS_TEST ? 10_000 : 5;
