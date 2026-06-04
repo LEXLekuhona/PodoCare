@@ -19,7 +19,8 @@ import {
   type SendSmsJobResult,
 } from '../../application/notifications.jobs';
 import { SMS_PROVIDER_TOKEN, type SmsProvider } from '../providers/sms-provider.port';
-import type { PushDeliveryService } from '../push/push-delivery.service';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
+import { PushDeliveryService } from '../push/push-delivery.service';
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { PrismaService } from '../../../../infrastructure/prisma/prisma.service';
