@@ -9,8 +9,8 @@ import { UserRole } from '@srs/shared-types';
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { MonetizationAccessService } from './monetization-access.service';
-
-import type { PrismaService } from '../../../infrastructure/prisma/prisma.service';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
+import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 import type { CreateInstallmentRequestDto } from '../presentation/dto/create-installment-request.dto';
 import type { PatchInstallmentRequestDto } from '../presentation/dto/patch-installment-request.dto';

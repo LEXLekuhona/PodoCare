@@ -7,8 +7,8 @@ import { JwtAuthGuard } from '../../auth/infrastructure/jwt-auth.guard';
 import { Roles } from '../../auth/infrastructure/roles.decorator';
 import { RolesGuard } from '../../auth/infrastructure/roles.guard';
 import { COMMERCE_STAFF_ROLES } from '../monetization.constants';
-
-import type { InstallmentRequestsService } from '../application/installment-requests.service';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
+import { InstallmentRequestsService } from '../application/installment-requests.service';
 import type { CreateInstallmentRequestDto } from './dto/create-installment-request.dto';
 import type { PatchInstallmentRequestDto } from './dto/patch-installment-request.dto';
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';

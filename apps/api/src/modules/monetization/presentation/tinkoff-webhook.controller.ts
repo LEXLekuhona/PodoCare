@@ -1,7 +1,7 @@
 import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-
-import type { PaymentsService } from '../application/payments.service';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
+import { PaymentsService } from '../application/payments.service';
 
 @ApiTags('webhooks')
 @Controller('webhooks')

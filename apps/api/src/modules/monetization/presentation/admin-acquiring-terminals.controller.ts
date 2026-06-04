@@ -15,8 +15,8 @@ import { UserRole } from '@srs/shared-types';
 import { JwtAuthGuard } from '../../auth/infrastructure/jwt-auth.guard';
 import { Roles } from '../../auth/infrastructure/roles.decorator';
 import { RolesGuard } from '../../auth/infrastructure/roles.guard';
-
-import type { AcquiringTerminalsService } from '../application/acquiring-terminals.service';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
+import { AcquiringTerminalsService } from '../application/acquiring-terminals.service';
 import type { CreateAcquiringTerminalDto } from './dto/create-acquiring-terminal.dto';
 import type { UpdateAcquiringTerminalDto } from './dto/update-acquiring-terminal.dto';
 
