@@ -25,7 +25,7 @@
     "docker:logs": "docker compose logs -f",
     "docker:reset": "docker compose down -v && docker compose up -d",
     "docker:build:prod": "docker compose -f docker-compose.yml -f docker-compose.prod.yml build",
-    "docker:up:prod": "docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build",
+    "docker:up:prod": "docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --force-recreate api admin",
     "docker:down:prod": "docker compose -f docker-compose.yml -f docker-compose.prod.yml down",
     "docker:logs:prod": "docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f",
     "dev:stack": "turbo run dev --filter=@srs/api --filter=@srs/mobile --parallel",

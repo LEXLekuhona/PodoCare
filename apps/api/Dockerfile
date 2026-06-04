@@ -45,14 +45,17 @@ COPY --from=build /app/apps/api/scripts ./apps/api/scripts
 COPY --from=build /app/apps/api/package.json ./apps/api/package.json
 # pnpm кладёт workspace-зависимости в apps/api/node_modules (@srs/shared-types → ../../../../packages/shared-types).
 COPY --from=build /app/apps/api/node_modules ./apps/api/node_modules
-COPY --from=build /app/packages/shared-types/dist ./packages/shared-types/dist
-COPY --from=build /app/packages/shared-types/package.json ./packages/shared-types/package.json
+COPY --from=build /app/packages/shared-types ./packages/shared-types
 
 COPY apps/api/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 WORKDIR /app/apps/api
-RUN node -e "require('@srs/shared-types'); require('@prisma/client'); console.log('build smoke: runtime deps OK')"
+# COPY может испортить symlink — кладём реальную копию пакета (не ссылку) в node_modules.
+RUN rm -rf node_modules/@srs/shared-types \
+  && mkdir -p node_modules/@srs \
+  && cp -a ../../packages/shared-types node_modules/@srs/shared-types \
+  && node -e "require.resolve('@srs/shared-types'); require('@srs/shared-types'); require('@prisma/client'); console.log('build smoke: runtime deps OK')"
 
 ENV NODE_ENV=production
 
