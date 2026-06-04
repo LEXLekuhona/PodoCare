@@ -34,34 +34,29 @@ FROM node:22.12-alpine AS runtime
 RUN apk add --no-cache openssl \
   && npm install -g pnpm@10.33.0
 
-WORKDIR /app
-
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
-COPY --from=build /app/apps/api/dist ./apps/api/dist
-COPY --from=build /app/apps/api/prisma ./apps/api/prisma
-COPY --from=build /app/apps/api/scripts ./apps/api/scripts
-COPY --from=build /app/apps/api/package.json ./apps/api/package.json
-# pnpm кладёт workspace-зависимости в apps/api/node_modules (@srs/shared-types → ../../../../packages/shared-types).
-COPY --from=build /app/apps/api/node_modules ./apps/api/node_modules
-COPY --from=build /app/packages/shared-types ./packages/shared-types
+# Целиком дерево из build: pnpm symlinks (@srs/shared-types) остаются валидными.
+COPY --from=build /app /app
 
 COPY apps/api/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 WORKDIR /app/apps/api
-# COPY может испортить symlink — кладём реальную копию пакета (не ссылку) в node_modules.
-RUN rm -rf node_modules/@srs/shared-types \
-  && mkdir -p node_modules/@srs \
-  && cp -a ../../packages/shared-types node_modules/@srs/shared-types \
-  && node -e "require.resolve('@srs/shared-types'); require('@srs/shared-types'); require('@prisma/client'); console.log('build smoke: runtime deps OK')"
+
+# Тот же резолв, что у скомпилированного auth.service.js
+RUN node -e "\
+  const { createRequire } = require('module'); \
+  const req = createRequire('/app/apps/api/dist/src/modules/auth/application/auth.service.js'); \
+  req.resolve('@srs/shared-types'); \
+  req('@srs/shared-types'); \
+  require('@prisma/client'); \
+  console.log('build smoke: runtime deps OK'); \
+"
 
 ENV NODE_ENV=production
 
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.API_PORT||3000)+'/api/v1/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "const p=process.env.API_GLOBAL_PREFIX||'api/v1';fetch('http://127.0.0.1:'+(process.env.API_PORT||3000)+'/'+p+'/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

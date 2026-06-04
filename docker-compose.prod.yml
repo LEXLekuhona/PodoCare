@@ -28,6 +28,7 @@ services:
       NODE_ENV: production
       API_HOST: 0.0.0.0
       API_PORT: 3000
+      API_GLOBAL_PREFIX: ${API_GLOBAL_PREFIX:-api/v1}
       DATABASE_URL: postgresql://${POSTGRES_USER:-srs}:${POSTGRES_PASSWORD:-srs_dev_pwd}@postgres:5432/${POSTGRES_DB:-srs}?schema=public
       REDIS_URL: redis://redis:6379
       S3_ENDPOINT: http://minio:9000
@@ -51,7 +52,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3000/api/v1/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+          "const p=process.env.API_GLOBAL_PREFIX||'api/v1';fetch('http://127.0.0.1:3000/'+p+'/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
         ]
       interval: 15s
       timeout: 10s
