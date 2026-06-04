@@ -51,8 +51,10 @@ COPY --from=build /app/packages/shared-types/package.json ./packages/shared-type
 COPY apps/api/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-ENV NODE_ENV=production
 WORKDIR /app/apps/api
+RUN node -e "require('@srs/shared-types'); require('@prisma/client'); console.log('build smoke: runtime deps OK')"
+
+ENV NODE_ENV=production
 
 EXPOSE 3000
 
