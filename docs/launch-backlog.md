@@ -73,5 +73,6 @@
 | 2026-05-12 | `pnpm --filter @srs/api test:e2e:core -- --ci`                                  | OK (18 тестов)          |
 | 2026-05-12 | `pnpm exec jest --config test/jest-e2e.config.js --runInBand --ci` в `apps/api` | OK (68 тестов, все e2e) |
 | 2026-05-12 | `pnpm typecheck`, `pnpm lint` (после `eslint --fix` в admin/api)                | OK                      |
+| 2026-06-19 | Staging VPS `148.253.213.153`: `.env` audit (`VITE_API_URL`, CORS), ротация `POSTGRES_PASSWORD`, cron `health-queues-synthetic-check.sh` каждые 5 мин | OK (API + admin smoke)  |
 
 Это **не** заменяет smoke на staging и ручной релизный чеклист в разделах 3–7 `docs/release-checklist.md`.
