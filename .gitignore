@@ -85,6 +85,9 @@ docs/**
 !docs/pre-commercial-readiness.md
 !docs/launch-backlog.md
 !docs/infrastructure-and-operations.md
+!docs/release-notes-template.md
+!docs/releases/
+!docs/releases/**
 !docs/adr/
 !docs/adr/**
 

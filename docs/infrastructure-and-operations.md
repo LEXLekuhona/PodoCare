@@ -33,7 +33,7 @@
 1. **Liveness:** `GET /api/v1/health/live` → `200`, тело `status: ok`.
 2. **Зависимости:** `GET /api/v1/health` → `200`, `postgres` и `redis` в `up`, очереди `notificationsQueue` / `appointmentsQueue` в `up`.
 3. **Очереди и пороги:** `GET /api/v1/health/queues` → `200`, поле `status` в `ok` | `warn` | `critical`; при первом деплое допустим `ok` при пустых очередях. Пороги задаются env `ALERT_*` (см. `.env.example`).
-4. **Критичный бизнес-smoke** (по scope релиза): минимум один сценарий из релизного чеклиста `docs/release-checklist.md` (например создание записи / оплата на staging).
+4. **Критичный бизнес-smoke** (по scope релиза): минимум один сценарий из релизного чеклиста `docs/release-checklist.md` (например создание записи / оплата на staging). Автоматизированный минимум на VPS: `scripts/staging-smoke.sh` (staff login + чтение `appointments` и `admin/catalog/networks` при `DEV_ADMIN_*` в `.env`).
 
 Заголовок `X-Request-Id` в ответах помогает сопоставить запрос с логами.
 

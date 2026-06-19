@@ -8,15 +8,16 @@
 
 - [ ] Свести изменения в `main` через PR (ревью, зелёный CI).
 - [x] **Автодеплой staging/VPS** после зелёного CI на `main`: `.github/workflows/deploy-staging.yml`, `scripts/deploy-staging.sh` (секреты `STAGING_SSH_*` в GitHub Actions).
-- [ ] На ветке релиз-кандидата **отметить** выполнение `docs/release-checklist.md` после реального прогона (включая smoke на staging, когда среда будет готова).
+- [x] **Staging RC smoke** — `scripts/staging-smoke.sh`, журнал: `docs/releases/staging-rc-2026-06-19.md` (2026-06-19 на VPS `148.253.213.153`).
+- [ ] На ветке релиз-кандидата **отметить** полный `docs/release-checklist.md` (ручные сценарии очередей/оплаты — при следующих RC).
 
 ---
 
 ## 2. Staging и production
 
-- [ ] **Staging**, близкий к prod: отдельные Postgres, Redis, S3-совместимое хранилище, секреты вне git — сверка с разделом 1 в `docs/infrastructure-and-operations.md` и подразделом «Сверка с этим бэклогом» там же.
+- [x] **Staging** (VPS `148.253.213.153`): отдельные Postgres, Redis, MinIO, секреты в `.env` вне git, API + admin + воркеры BullMQ; smoke `scripts/staging-smoke.sh` — см. `docs/releases/staging-rc-2026-06-19.md`.
 - [ ] **Production**: managed Postgres (бэкапы, по возможности PITR), Redis, object storage, секреты только во внешнем хранилище — сверка с разделом 2 в `docs/infrastructure-and-operations.md` и тем же подразделом.
-- [ ] **Алерты** по `GET /api/v1/health/queues` на staging и prod (`ALERT_*`, раздел 5 в `docs/infrastructure-and-operations.md`; ненулевой exit для внешней синтетики — `scripts/health-queues-synthetic-check.sh`).
+- [x] **Алерты staging**: cron `health-queues-synthetic-check.sh` каждые 5 мин на VPS; `ALERT_*` в `.env`. **Prod** — ещё не настроен.
 
 ---
 
@@ -74,5 +75,6 @@
 | 2026-05-12 | `pnpm exec jest --config test/jest-e2e.config.js --runInBand --ci` в `apps/api` | OK (68 тестов, все e2e) |
 | 2026-05-12 | `pnpm typecheck`, `pnpm lint` (после `eslint --fix` в admin/api)                | OK                      |
 | 2026-06-19 | Staging VPS `148.253.213.153`: `.env` audit (`VITE_API_URL`, CORS), ротация `POSTGRES_PASSWORD`, cron `health-queues-synthetic-check.sh` каждые 5 мин | OK (API + admin smoke)  |
+| 2026-06-19 | `scripts/staging-smoke.sh` на VPS (health, queues, staff login, appointments, admin/catalog/networks) | OK                      |
 
 Это **не** заменяет smoke на staging и ручной релизный чеклист в разделах 3–7 `docs/release-checklist.md`.

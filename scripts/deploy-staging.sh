@@ -70,18 +70,9 @@ if [[ "$ready" != "1" ]]; then
   exit 1
 fi
 
-echo "==> smoke: health"
-curl -sf "http://127.0.0.1:3000/api/v1/health" | head -c 400
-echo
-
-echo "==> smoke: admin /health"
-curl -sf "http://127.0.0.1:${ADMIN_PORT}/health" | head -c 80
-echo
-
-if [[ -x scripts/health-queues-synthetic-check.sh ]] && command -v jq >/dev/null 2>&1; then
-  echo "==> smoke: health/queues"
-  BASE_URL=http://127.0.0.1:3000 scripts/health-queues-synthetic-check.sh
-fi
+echo "==> staging smoke (infrastructure + business minimum)"
+chmod +x scripts/staging-smoke.sh
+BASE_URL="http://127.0.0.1:3000" ADMIN_URL="http://127.0.0.1:${ADMIN_PORT}" ./scripts/staging-smoke.sh
 
 echo "==> containers"
 "${COMPOSE[@]}" ps
