@@ -30,7 +30,10 @@
 
 ## 4. Платежи на staging / prod
 
-- [ ] Реальные ключи YooKassa / Т‑Банк, публичный HTTPS для webhooks, проверка идемпотентности на **staging**.
+**Предусловие staging:** публичный **HTTPS**-URL API для webhooks (сейчас только `http://148.253.213.153:3000` — провайдеры не примут).
+
+- [ ] Домен + TLS на staging (reverse proxy / acme.sh), обновить `VITE_API_URL`, `API_CORS_ORIGINS`, webhook URL в кабинетах.
+- [ ] Реальные ключи YooKassa / Т‑Банк, проверка идемпотентности на **staging**.
 - [ ] Терминалы эквайринга в prod: `acquiring_terminals` и/или env, роль `SUPER_ADMIN`, ротация секретов, `DATA_ENCRYPTION_KEY`.
 - [ ] Сквозной happy-path «CTA → оплата → статус заказа» на staging (acceptance в `docs/roadmap.md`, блок Monetization).
 
@@ -76,5 +79,6 @@
 | 2026-05-12 | `pnpm typecheck`, `pnpm lint` (после `eslint --fix` в admin/api)                | OK                      |
 | 2026-06-19 | Staging VPS `148.253.213.153`: `.env` audit (`VITE_API_URL`, CORS), ротация `POSTGRES_PASSWORD`, cron `health-queues-synthetic-check.sh` каждые 5 мин | OK (API + admin smoke)  |
 | 2026-06-19 | `scripts/staging-smoke.sh` на VPS (health, queues, staff login, appointments, admin/catalog/networks) | OK                      |
+| 2026-06-19 | Восстановление API↔Postgres после ротации пароля (`force-recreate api`); повторный staging-smoke | OK                      |
 
 Это **не** заменяет smoke на staging и ручной релизный чеклист в разделах 3–7 `docs/release-checklist.md`.
