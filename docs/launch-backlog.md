@@ -7,6 +7,7 @@
 ## 1. Репозиторий и процесс
 
 - [ ] Свести изменения в `main` через PR (ревью, зелёный CI).
+- [x] **Автодеплой staging/VPS** после зелёного CI на `main`: `.github/workflows/deploy-staging.yml`, `scripts/deploy-staging.sh` (секреты `STAGING_SSH_*` в GitHub Actions).
 - [ ] На ветке релиз-кандидата **отметить** выполнение `docs/release-checklist.md` после реального прогона (включая smoke на staging, когда среда будет готова).
 
 ---

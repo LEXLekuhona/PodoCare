@@ -1,0 +1,106 @@
+# Deploy to staging VPS after green CI on push to main.
+#
+# Required GitHub repository secrets (Settings → Secrets and variables → Actions):
+#   STAGING_SSH_HOST          — e.g. 148.253.213.153
+#   STAGING_SSH_USER          — e.g. root
+#   STAGING_SSH_PRIVATE_KEY   — private key (PEM), matching public key in VPS ~/.ssh/authorized_keys
+#
+# Optional repository variables (Settings → Secrets and variables → Actions → Variables):
+#   STAGING_DEPLOY_PATH       — default /root/PodoCare
+#   STAGING_ADMIN_HTTP_PORT   — default 8080
+#
+# VPS must be able to `git pull` from GitHub (deploy key or HTTPS token on the server).
+# Server `.env` is never touched by this workflow.
+
+name: Deploy staging (VPS)
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main'
+      )
+
+    steps:
+      - name: Validate secrets
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in STAGING_SSH_HOST STAGING_SSH_USER STAGING_SSH_PRIVATE_KEY; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing repository secret: ${name}"
+              missing=1
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then
+            exit 1
+          fi
+        env:
+          STAGING_SSH_HOST: ${{ secrets.STAGING_SSH_HOST }}
+          STAGING_SSH_USER: ${{ secrets.STAGING_SSH_USER }}
+          STAGING_SSH_PRIVATE_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+
+      - name: Deploy over SSH
+        env:
+          SSH_HOST: ${{ secrets.STAGING_SSH_HOST }}
+          SSH_USER: ${{ secrets.STAGING_SSH_USER }}
+          SSH_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+          DEPLOY_PATH: ${{ secrets.STAGING_DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          DEPLOY_PATH="${DEPLOY_PATH:-/root/PodoCare}"
+
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "${SSH_USER}@${SSH_HOST}" \
+            "DEPLOY_ROOT='${DEPLOY_PATH}' bash -s" <<'EOF'
+          set -euo pipefail
+          DEPLOY_ROOT="${DEPLOY_ROOT:-/root/PodoCare}"
+          cd "$DEPLOY_ROOT"
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
+          chmod +x scripts/deploy-staging.sh
+          exec env DEPLOY_ROOT="$DEPLOY_ROOT" ./scripts/deploy-staging.sh
+          EOF
+
+      - name: Public smoke (API + admin)
+        env:
+          SSH_HOST: ${{ secrets.STAGING_SSH_HOST }}
+          ADMIN_PORT: ${{ vars.STAGING_ADMIN_HTTP_PORT }}
+        run: |
+          set -euo pipefail
+          ADMIN_PORT="${ADMIN_PORT:-8080}"
+          api_url="http://${SSH_HOST}:3000/api/v1/health/live"
+          admin_url="http://${SSH_HOST}:${ADMIN_PORT}/health"
+
+          for i in $(seq 1 12); do
+            api_ok=0
+            admin_ok=0
+            curl -sf "$api_url" >/dev/null && api_ok=1
+            curl -sf "$admin_url" >/dev/null && admin_ok=1
+            if [[ "$api_ok" -eq 1 && "$admin_ok" -eq 1 ]]; then
+              echo "Public smoke OK: $api_url"
+              echo "Public smoke OK: $admin_url"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Public smoke failed (api=$api_url admin=$admin_url)"
+          exit 1
