@@ -2,11 +2,52 @@
 
 Сборка отдельного приложения на сеть/студию: бренд, bundle id, API tenant.
 
-Юридические тексты: `legal/b2c-*.md` → переменные ниже.
+**Удобный процесс:** пресеты в `apps/mobile/tenants/` + CLI из корня репозитория.
 
 ---
 
-## Переменные окружения
+## Быстрый старт (Solodova)
+
+```bash
+# из корня репозитория
+pnpm mobile:tenant list
+pnpm mobile:tenant use solodova    # копирует tenants/solodova.env → apps/mobile/.env
+pnpm dev:mobile:solodova         # use solodova + Metro
+```
+
+Эталонный файл: `apps/mobile/tenants/solodova.env`.
+
+---
+
+## Новый заказчик
+
+```bash
+pnpm mobile:tenant new studio-alfa
+# интерактивно: название, юрлицо, API, privacy URL, package id…
+pnpm mobile:tenant use studio-alfa
+pnpm dev:mobile
+```
+
+Или вручную: `cp apps/mobile/tenants/_template.env apps/mobile/tenants/my.env` и отредактировать.
+
+---
+
+## Команды
+
+| Команда | Действие |
+|---------|----------|
+| `pnpm mobile:tenant list` | Список пресетов |
+| `pnpm mobile:tenant use <slug>` | Активировать → `.env` |
+| `pnpm mobile:tenant show <slug>` | Показать конфиг |
+| `pnpm mobile:tenant new <slug>` | Мастер нового tenant |
+| `pnpm mobile:tenant:solodova` | Только `use solodova` |
+| `pnpm dev:mobile:solodova` | Solodova + Expo |
+
+После смены tenant **перезапустите Metro** (env читается при старте).
+
+---
+
+## Переменные в tenant-файле
 
 ### Стор и нативная оболочка (`app.config.ts`)
 

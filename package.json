@@ -34,6 +34,9 @@
     "dev:stack:infra": "docker compose up -d && node scripts/wait-for-infra.cjs && pnpm --filter @srs/api exec prisma generate && pnpm --filter @srs/api exec prisma migrate deploy && pnpm dev:stack",
     "dev:mobile": "pnpm --filter @srs/mobile dev",
     "dev:mobile:clear": "pnpm --filter @srs/mobile run dev:clear",
+    "dev:mobile:solodova": "bash scripts/mobile-tenant.sh use solodova && pnpm --filter @srs/mobile dev",
+    "mobile:tenant": "bash scripts/mobile-tenant.sh",
+    "mobile:tenant:solodova": "bash scripts/mobile-tenant.sh use solodova",
     "dev:android": "docker compose up -d && node scripts/wait-for-infra.cjs && pnpm --filter @srs/api exec prisma generate && pnpm --filter @srs/api exec prisma migrate deploy && pnpm --filter @srs/api prisma:seed && pnpm dev:stack",
     "clean": "turbo run clean && rm -rf node_modules"
   },

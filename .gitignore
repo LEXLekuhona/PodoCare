@@ -29,6 +29,7 @@ __snapshots__/
 .env.local
 .env.*.local
 !.env.example
+apps/mobile/.tenant-active
 
 # Logs
 logs/
