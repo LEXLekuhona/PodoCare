@@ -49,7 +49,7 @@
 
 ### Открытые задачи §3
 
-- [x] **Тариф подписки:** `docs/product/b2b-tariff.md` (**v0.2** — рекомендуемые цифры; подтвердить базовый / агрессивный / премиум).
+- [x] **Тариф подписки:** `docs/product/b2b-tariff.md` (**v0.3 утверждён** — базовый вариант).
 - [x] **Бриф для юриста:** `docs/product/b2b-contract-brief-for-legal.md` (передать юристу, не заменяет договор).
 - [x] **Чеклист материалов заказчика:** `docs/product/customer-release-checklist.md` (треки A/B).
 - [ ] **White-label mobile:** конфиг бренда (имя, bundle id, иконка, `networkId`, API URL) → сборка EAS; убрать хардкод «Solodova» из `apps/mobile` в параметризуемый слой.
