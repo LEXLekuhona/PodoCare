@@ -16,6 +16,7 @@ import { loadSelectedStudio } from '@/features/studio/local-studio-storage';
 import { ApiError } from '@/shared/api/api-error';
 import { sanitizeRouteParam } from '@/shared/navigation/route-params';
 import { AppHeader } from '@/shared/ui/AppHeader';
+import { getAppBranding } from '@/shared/config/branding';
 import { SafeAreaPadding } from '@/shared/ui/safe-area';
 
 const BRAND = '#0F5238';
@@ -97,7 +98,7 @@ export function ServiceSelectionPage() {
 
   return (
     <View style={styles.root} lightColor="#FFFFFF" darkColor="#06130E">
-      <AppHeader title="Solodova Recovery System" onBackPress={() => router.back()} />
+      <AppHeader title={getAppBranding().brandName} onBackPress={() => router.back()} />
 
       <ScrollView
         style={styles.scroll}

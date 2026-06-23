@@ -21,6 +21,7 @@ import { NextAppointmentCard } from './NextAppointmentCard'
 import { ApiError } from '@/shared/api/api-error'
 import { USER_MUTATION_OFFLINE } from '@/shared/api/user-facing-errors'
 import { fetchIsOffline } from '@/shared/network/connectivity'
+import { getAppBranding } from '@/shared/config/branding'
 import { LeafLogo } from '@/shared/ui/icons/LeafLogo'
 import { ConcernIcon } from '@/shared/ui/icons/concerns/ConcernIcon'
 import { SafeAreaPadding } from '@/shared/ui/safe-area'
@@ -87,7 +88,7 @@ export function HomePage() {
           </RNView>
 
           <RNView pointerEvents="none" style={styles.headerCenter}>
-            <Text style={styles.brand}>Solodova Recovery System</Text>
+            <Text style={styles.brand}>{getAppBranding().brandName}</Text>
           </RNView>
 
           <Pressable

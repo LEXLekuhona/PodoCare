@@ -14,6 +14,7 @@ import {
   sanitizeRouteParam,
 } from '@/shared/navigation/route-params';
 import { AppHeader } from '@/shared/ui/AppHeader';
+import { getAppBranding } from '@/shared/config/branding';
 import { SafeAreaPadding } from '@/shared/ui/safe-area';
 
 const MONTHS_RU_SHORT = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
@@ -145,7 +146,7 @@ export function DateTimePage() {
 
   return (
     <View style={styles.root}>
-      <AppHeader title="Solodova Recovery System" onBackPress={() => router.back()} />
+      <AppHeader title={getAppBranding().brandName} onBackPress={() => router.back()} />
 
       <ScrollView
         style={styles.scroll}

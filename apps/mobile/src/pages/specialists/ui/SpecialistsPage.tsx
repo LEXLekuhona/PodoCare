@@ -20,6 +20,7 @@ import { loadSelectedStudio } from '@/features/studio/local-studio-storage';
 import { ApiError } from '@/shared/api/api-error';
 import { sanitizeRouteParam } from '@/shared/navigation/route-params';
 import { AppHeader } from '@/shared/ui/AppHeader';
+import { getAppBranding } from '@/shared/config/branding';
 
 const BRAND_GREEN = '#0F5238';
 const PRIMARY = '#2D6A4F';
@@ -211,7 +212,7 @@ export function SpecialistsPage() {
   return (
     <View style={styles.root} lightColor="#FFFFFF" darkColor="#06130E">
       <AppHeader
-        title="Solodova Recovery System"
+        title={getAppBranding().brandName}
         titleStyle={styles.headerBrand}
         onBackPress={canGoBack ? () => router.back() : undefined}
       />

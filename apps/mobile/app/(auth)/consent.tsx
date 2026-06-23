@@ -6,7 +6,8 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View as RN
 
 import { Text, View } from '@/components/Themed';
 import { ConsentDocumentBody } from '@/features/consents/ConsentDocumentBody';
-import { CONSENT_DOCUMENT_VERSIONS, PERSONAL_DATA_PARAGRAPHS } from '@/features/consents/consent-copy';
+import { CONSENT_DOCUMENT_VERSIONS, getPersonalDataParagraphs } from '@/features/consents/consent-copy';
+import { getAppBranding } from '@/shared/config/branding';
 import { recordConsents } from '@/features/consents/consents-api';
 import { ApiError } from '@/shared/api/api-error';
 import { LeafLogo } from '@/shared/ui/icons/LeafLogo';
@@ -22,7 +23,7 @@ export default function PrivacyConsentScreen() {
         <View style={styles.topRow} lightColor="transparent" darkColor="transparent">
           <View style={styles.brand} lightColor="transparent" darkColor="transparent">
             <LeafLogo size={28} color="#707973" />
-            <Text style={styles.brandText}>Solodova Recovery System</Text>
+            <Text style={styles.brandText}>{getAppBranding().brandName}</Text>
           </View>
           <Pressable accessibilityLabel="Уведомления" style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}>
             <FontAwesome name="bell-o" size={18} color="#0F5238" />
@@ -51,7 +52,7 @@ export default function PrivacyConsentScreen() {
 
         <View style={styles.card} lightColor="#FFFFFF" darkColor="#0C1A14">
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.docScroll}>
-            <ConsentDocumentBody paragraphs={PERSONAL_DATA_PARAGRAPHS} />
+            <ConsentDocumentBody paragraphs={getPersonalDataParagraphs()} />
           </ScrollView>
         </View>
       </View>

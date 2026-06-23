@@ -59,4 +59,4 @@
 
 ## Связь с кодом
 
-Тексты согласий в `apps/mobile/src/features/consents/consent-copy.ts` нужно заменить на версии из `b2c-consent-*.md` с подстановкой бренда студии (задача white-label, §3 бэклога).
+Тексты согласий: `apps/mobile/src/features/consents/consent-copy.ts` + `EXPO_PUBLIC_*` из [white-label-mobile.md](../white-label-mobile.md).

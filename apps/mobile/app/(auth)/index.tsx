@@ -4,6 +4,7 @@ import { StyleSheet } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
 import { ensureSessionReady } from '@/features/auth/session-store';
+import { getAppBranding } from '@/shared/config/branding';
 import { LeafLogo } from '@/shared/ui/icons/LeafLogo';
 
 export default function SplashScreen() {
@@ -28,7 +29,7 @@ export default function SplashScreen() {
 
       <View style={styles.textBlock} lightColor="transparent" darkColor="transparent">
         <Text style={styles.title} lightColor="#FFFFFF" darkColor="#FFFFFF">
-          Solodova Recovery System
+          {getAppBranding().brandName}
         </Text>
         <Text style={styles.subtitle} lightColor="#95D4B3" darkColor="#95D4B3">
           ЗАБОТА О ВАШЕМ ЗДОРОВЬЕ

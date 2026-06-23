@@ -25,6 +25,7 @@ import {
   USER_SERVER_NO_CACHED_DATA,
 } from '@/shared/api/user-facing-errors';
 import { fetchIsOffline } from '@/shared/network/connectivity';
+import { getAppBranding } from '@/shared/config/branding';
 import { formatRuPhoneDisplay } from '@/shared/lib/phone';
 import { LeafLogo } from '@/shared/ui/icons/LeafLogo';
 import { SafeAreaPadding } from '@/shared/ui/safe-area';
@@ -230,7 +231,7 @@ export function ProfilePage() {
             label="О приложении"
             onPress={() =>
               Alert.alert(
-                'Solodova Recovery System',
+                getAppBranding().brandName,
                 `Версия ${appVersion}\n\nСервис заботы о здоровье стоп и ногтей.`,
               )
             }

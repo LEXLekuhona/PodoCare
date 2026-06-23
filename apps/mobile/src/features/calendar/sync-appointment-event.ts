@@ -2,8 +2,7 @@ import * as Calendar from 'expo-calendar';
 import type { Source } from 'expo-calendar';
 import { Platform } from 'react-native';
 
-const APP_CALENDAR_TITLE = 'Solodova';
-const APP_CALENDAR_INTERNAL = 'solodova_appointments';
+import { getAppBranding } from '@/shared/config/branding';
 
 export type SyncAppointmentCalendarInput = {
   startsAt: Date;
@@ -35,16 +34,17 @@ async function pickWritableCalendarId(): Promise<string | null> {
 }
 
 async function createAppCalendarId(): Promise<string | null> {
+  const { calendarSourceTitle, calendarSourceId } = getAppBranding();
   try {
     if (Platform.OS === 'ios') {
       const def = await Calendar.getDefaultCalendarAsync();
       const source = def.source;
       if (!source?.name) return null;
       return await Calendar.createCalendarAsync({
-        title: APP_CALENDAR_TITLE,
+        title: calendarSourceTitle,
         color: '#2D6A4F',
         entityType: Calendar.EntityTypes.EVENT,
-        name: APP_CALENDAR_INTERNAL,
+        name: calendarSourceId,
         ownerAccount: def.ownerAccount ?? 'personal',
         accessLevel: Calendar.CalendarAccessLevel.OWNER,
         source,
@@ -53,16 +53,16 @@ async function createAppCalendarId(): Promise<string | null> {
     }
 
     return await Calendar.createCalendarAsync({
-      title: APP_CALENDAR_TITLE,
+      title: calendarSourceTitle,
       color: '#2D6A4F',
       entityType: Calendar.EntityTypes.EVENT,
-      name: APP_CALENDAR_INTERNAL,
+      name: calendarSourceId,
       ownerAccount: 'personal',
       accessLevel: Calendar.CalendarAccessLevel.OWNER,
       // Локальный аккаунт Android: поле type в рантайме не требуется (см. документацию Expo).
       source: {
         isLocalAccount: true,
-        name: APP_CALENDAR_TITLE,
+        name: calendarSourceTitle,
       } as Source,
     });
   } catch {

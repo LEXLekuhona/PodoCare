@@ -52,7 +52,7 @@
 - [x] **Тариф подписки:** `docs/product/b2b-tariff.md` (**v0.3 утверждён** — базовый вариант).
 - [x] **Бриф для юриста:** заменён черновиками в `docs/product/legal/` (B2B-договор, DPA, B2C-шаблоны). **Рекомендуется** внешняя проверка перед первым реальным заказчиком.
 - [x] **Чеклист материалов заказчика:** `docs/product/customer-release-checklist.md` (треки A/B).
-- [ ] **White-label mobile:** конфиг бренда (имя, bundle id, иконка, `networkId`, API URL) → сборка EAS; убрать хардкод «Solodova» из `apps/mobile` в параметризуемый слой.
+- [x] **White-label mobile:** `EXPO_PUBLIC_*` + `app.config.ts`, `src/shared/config/branding.ts`, см. `docs/product/white-label-mobile.md`.
 - [ ] **Release kit** (техн. упаковка для трека B) + автоматизация приёмки трека A.
 - [ ] **Онбординг студии (фаза 1):** ручное создание `Network` + первый `NETWORK_OWNER` (self-service — позже).
 - [ ] **Mobile в сторах:** первый пилотный заказчик по чеклисту.

@@ -14,6 +14,7 @@ import {
 
 import { Text, View } from '@/components/Themed';
 import { createSupportTicket } from '@/features/support/support-api';
+import { getAppBranding } from '@/shared/config/branding';
 import { SafeAreaPadding } from '@/shared/ui/safe-area';
 
 const GREEN = '#2D6A4F';
@@ -31,7 +32,10 @@ export function SupportMessagePage() {
     }
     if (submitting) return;
     setSubmitting(true);
-    void createSupportTicket({ subject: 'Solodova Recovery — вопрос', message: t })
+    void createSupportTicket({
+      subject: `${getAppBranding().supportTicketSubjectPrefix} — вопрос`,
+      message: t,
+    })
       .then(() => {
         Alert.alert('Спасибо!', 'Мы получили сообщение и скоро ответим.', [{ text: 'OK', onPress: () => router.back() }]);
         setText('');

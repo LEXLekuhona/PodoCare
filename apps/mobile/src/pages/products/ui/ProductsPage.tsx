@@ -16,6 +16,7 @@ import {
   USER_SERVER_NO_CACHED_DATA,
 } from '@/shared/api/user-facing-errors';
 import { fetchIsOffline } from '@/shared/network/connectivity';
+import { getAppBranding } from '@/shared/config/branding';
 import { LeafLogo } from '@/shared/ui/icons/LeafLogo';
 import { SafeAreaPadding } from '@/shared/ui/safe-area';
 
@@ -193,7 +194,7 @@ export function ProductsPage() {
             <LeafLogo size={70} color="#707973" />
           </RNView>
           <RNView pointerEvents="none" style={styles.headerCenter}>
-            <Text style={styles.brand}>Solodova Recovery System</Text>
+            <Text style={styles.brand}>{getAppBranding().brandName}</Text>
           </RNView>
           <Pressable
             hitSlop={12}
