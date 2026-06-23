@@ -88,6 +88,8 @@ docs/**
 !docs/release-notes-template.md
 !docs/releases/
 !docs/releases/**
+!docs/product/
+!docs/product/**
 !docs/adr/
 !docs/adr/**
 
