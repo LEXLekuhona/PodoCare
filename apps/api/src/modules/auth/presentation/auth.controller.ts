@@ -1,14 +1,9 @@
- 
+/* eslint-disable @typescript-eslint/consistent-type-imports -- DTO classes for @Body() metadata */
 import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { AuthService } from '../application/auth.service';
-
-// Nest ValidationPipe relies on runtime metadata for DTO classes.
-// `import type` breaks `design:paramtypes`, causing whitelist validation to reject all properties.
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- DTO classes for @Body() metadata
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { StaffLoginDto } from './dto/staff-login.dto';

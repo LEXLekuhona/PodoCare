@@ -16,13 +16,14 @@ import { CurrentUser } from '../../auth/infrastructure/current-user.decorator';
 import { JwtAuthGuard } from '../../auth/infrastructure/jwt-auth.guard';
 import { Roles } from '../../auth/infrastructure/roles.decorator';
 import { RolesGuard } from '../../auth/infrastructure/roles.guard';
-import { COMMERCE_STAFF_ROLES } from '../monetization.constants';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { OrdersService } from '../application/orders.service';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { PaymentsService } from '../application/payments.service';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { ShipmentsService } from '../application/shipments.service';
+import { COMMERCE_STAFF_ROLES } from '../monetization.constants';
+
 import type { CheckoutOrderDto } from './dto/checkout-order.dto';
 import type { CreateOrderPaymentDto } from './dto/create-order-payment.dto';
 import type { CreateVisitInvoiceDto } from './dto/create-visit-invoice.dto';

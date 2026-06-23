@@ -11,6 +11,7 @@ import { UserRole } from '@srs/shared-types';
 import { MonetizationAccessService } from './monetization-access.service';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
+
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 import type { CreateProgramInquiryDto } from '../presentation/dto/create-program-inquiry.dto';
 import type { PatchProgramInquiryDto } from '../presentation/dto/patch-program-inquiry.dto';

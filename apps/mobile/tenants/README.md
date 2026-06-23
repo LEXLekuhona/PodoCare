@@ -4,7 +4,8 @@
 
 | Файл | Описание |
 |------|----------|
-| `solodova.env` | Эталон Solodova (dev и образец для новых) |
+| `solodova.env` | Эталон Solodova (локальный API localhost) |
+| `solodova-staging.env` | Solodova против staging VPS (`148.253.213.153`) |
 | `_template.env` | Пустой шаблон |
 
 ## Команды (из корня репозитория)
@@ -16,6 +17,9 @@ pnpm mobile:tenant show solodova     # показать конфиг
 pnpm mobile:tenant new my-studio     # мастер создания нового tenant
 pnpm mobile:tenant:solodova          # use solodova + подсказка запуска Metro
 pnpm dev:mobile:solodova             # use solodova + expo start
+pnpm dev:mobile:solodova-staging       # use solodova-staging + expo start (VPS IP)
+pnpm solodova:dev                      # infra + migrate + seed + API + mobile
+pnpm solodova:dev:admin                # то же + админка вместо mobile
 ```
 
 После `use` перезапустите Metro (`pnpm dev:mobile`), чтобы подтянуть env.

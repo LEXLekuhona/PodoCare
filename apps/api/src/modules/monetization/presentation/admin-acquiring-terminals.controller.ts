@@ -17,6 +17,7 @@ import { Roles } from '../../auth/infrastructure/roles.decorator';
 import { RolesGuard } from '../../auth/infrastructure/roles.guard';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { AcquiringTerminalsService } from '../application/acquiring-terminals.service';
+
 import type { CreateAcquiringTerminalDto } from './dto/create-acquiring-terminal.dto';
 import type { UpdateAcquiringTerminalDto } from './dto/update-acquiring-terminal.dto';
 

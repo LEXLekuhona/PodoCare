@@ -5,6 +5,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { CryptoService } from '../../../infrastructure/crypto/crypto.service';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
+
 import type { CreateAcquiringTerminalDto } from '../presentation/dto/create-acquiring-terminal.dto';
 import type { UpdateAcquiringTerminalDto } from '../presentation/dto/update-acquiring-terminal.dto';
 import type { PaymentProvider } from '@prisma/client';
