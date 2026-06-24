@@ -9,6 +9,9 @@
 
 set -euo pipefail
 
+DEPLOY_MARKER="${DEPLOY_MARKER:-/tmp/srs-deploy-staging.status}"
+DEPLOY_LOG="${DEPLOY_LOG:-/tmp/srs-deploy-staging.log}"
+
 DEPLOY_ROOT="${DEPLOY_ROOT:-/root/PodoCare}"
 GIT_BRANCH="${GIT_BRANCH:-main}"
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.prod.yml)
@@ -16,6 +19,12 @@ HEALTH_RETRIES="${HEALTH_RETRIES:-36}"
 HEALTH_INTERVAL="${HEALTH_INTERVAL:-5}"
 
 cd "$DEPLOY_ROOT"
+
+on_exit() {
+  local code=$?
+  printf '%s\n' "$code" >"$DEPLOY_MARKER"
+}
+trap on_exit EXIT
 
 if [[ ! -f .env ]]; then
   echo "deploy-staging: missing .env in ${DEPLOY_ROOT}" >&2

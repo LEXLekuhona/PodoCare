@@ -25,6 +25,7 @@ jobs:
   deploy:
     name: Deploy to VPS
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     if: >
       github.event_name == 'workflow_dispatch' ||
       (
@@ -52,7 +53,7 @@ jobs:
           STAGING_SSH_USER: ${{ secrets.STAGING_SSH_USER }}
           STAGING_SSH_PRIVATE_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
 
-      - name: Deploy over SSH
+      - name: Start deploy on VPS (detached)
         env:
           SSH_HOST: ${{ secrets.STAGING_SSH_HOST }}
           SSH_USER: ${{ secrets.STAGING_SSH_USER }}
@@ -67,18 +68,71 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes \
-            "${SSH_USER}@${SSH_HOST}" \
+          SSH_OPTS=(
+            -i ~/.ssh/deploy_key
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o ServerAliveInterval=30
+            -o ServerAliveCountMax=120
+          )
+
+          ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SSH_HOST}" \
             "DEPLOY_ROOT='${DEPLOY_PATH}' bash -s" <<'EOF'
           set -euo pipefail
           DEPLOY_ROOT="${DEPLOY_ROOT:-/root/PodoCare}"
+          DEPLOY_MARKER=/tmp/srs-deploy-staging.status
+          DEPLOY_LOG=/tmp/srs-deploy-staging.log
           cd "$DEPLOY_ROOT"
           git fetch origin main
           git checkout main
           git pull --ff-only origin main
           chmod +x scripts/deploy-staging.sh
-          exec env DEPLOY_ROOT="$DEPLOY_ROOT" ./scripts/deploy-staging.sh
+          rm -f "$DEPLOY_MARKER"
+          nohup env DEPLOY_ROOT="$DEPLOY_ROOT" ./scripts/deploy-staging.sh >"$DEPLOY_LOG" 2>&1 </dev/null &
+          echo "deploy started pid=$! log=$DEPLOY_LOG"
           EOF
+
+      - name: Wait for deploy on VPS
+        env:
+          SSH_HOST: ${{ secrets.STAGING_SSH_HOST }}
+          SSH_USER: ${{ secrets.STAGING_SSH_USER }}
+          SSH_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          SSH_OPTS=(
+            -i ~/.ssh/deploy_key
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o ServerAliveInterval=30
+            -o ServerAliveCountMax=10
+          )
+
+          for i in $(seq 1 90); do
+            if status="$(ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SSH_HOST}" \
+              'if [[ -f /tmp/srs-deploy-staging.status ]]; then cat /tmp/srs-deploy-staging.status; else echo pending; fi' 2>/dev/null)"; then
+              if [[ "$status" == "0" ]]; then
+                echo "Deploy finished successfully"
+                exit 0
+              fi
+              if [[ "$status" != "pending" ]]; then
+                echo "::error::Deploy failed on VPS (exit ${status})"
+                ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SSH_HOST}" \
+                  'tail -n 80 /tmp/srs-deploy-staging.log 2>/dev/null || true'
+                exit 1
+              fi
+            fi
+            echo "waiting for deploy... (${i}/90)"
+            sleep 20
+          done
+          echo "::error::Deploy timed out on VPS"
+          ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SSH_HOST}" \
+            'tail -n 80 /tmp/srs-deploy-staging.log 2>/dev/null || true'
+          exit 1
 
       - name: Public smoke (API + admin)
         env:
@@ -90,17 +144,17 @@ jobs:
           api_url="http://${SSH_HOST}:3000/api/v1/health/live"
           admin_url="http://${SSH_HOST}:${ADMIN_PORT}/health"
 
-          for i in $(seq 1 12); do
+          for i in $(seq 1 24); do
             api_ok=0
             admin_ok=0
-            curl -sf "$api_url" >/dev/null && api_ok=1
-            curl -sf "$admin_url" >/dev/null && admin_ok=1
+            curl -sf --connect-timeout 5 "$api_url" >/dev/null && api_ok=1
+            curl -sf --connect-timeout 5 "$admin_url" >/dev/null && admin_ok=1
             if [[ "$api_ok" -eq 1 && "$admin_ok" -eq 1 ]]; then
               echo "Public smoke OK: $api_url"
               echo "Public smoke OK: $admin_url"
               exit 0
             fi
-            sleep 5
+            sleep 10
           done
           echo "::error::Public smoke failed (api=$api_url admin=$admin_url)"
           exit 1
