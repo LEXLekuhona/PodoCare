@@ -55,7 +55,7 @@ jobs:
         run: pnpm --filter @srs/shared-types build
 
       - name: Run core e2e suite (merge gate)
-        run: pnpm --filter @srs/api test:e2e:core -- --ci
+        run: pnpm --filter @srs/api test:e2e:core --ci
 
   test:
     name: Tests (unit + integration + e2e)
@@ -81,13 +81,13 @@ jobs:
         run: pnpm --filter @srs/shared-types build
 
       - name: Run unit tests
-        run: pnpm --filter @srs/api test:unit -- --ci --coverage
+        run: pnpm --filter @srs/api test:unit:cov --ci
 
       - name: Run integration tests (testcontainers)
-        run: pnpm --filter @srs/api test:integration -- --ci
+        run: pnpm --filter @srs/api test:integration --ci
 
       - name: Run e2e tests (testcontainers)
-        run: pnpm --filter @srs/api test:e2e -- --ci
+        run: pnpm --filter @srs/api test:e2e --ci
 
       - uses: actions/upload-artifact@v4
         if: always()
