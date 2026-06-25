@@ -506,6 +506,7 @@ export class AppointmentsService {
             firstName: true,
             lastName: true,
             phone: true,
+            linkedUserId: true,
           },
         },
         service: { select: { id: true, name: true } },

@@ -20,6 +20,7 @@ export type AppointmentRow = {
     firstName: string;
     lastName: string;
     phone: string;
+    linkedUserId?: string | null;
   } | null;
   specialistId: string;
   startsAt: string;

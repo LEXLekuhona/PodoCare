@@ -165,7 +165,7 @@ export function TreatmentFlowPage() {
     loading,
     error,
     setError,
-  } = useClinicalVisitPicker({ clientFilter: 'app' });
+  } = useClinicalVisitPicker();
 
   const [services, setServices] = useState<ServiceRow[]>([]);
   const [serviceFilter, setServiceFilter] = useState('');
@@ -181,6 +181,13 @@ export function TreatmentFlowPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const selectedPlan = useMemo(() => plans.find((item) => item.id === selectedPlanId) ?? null, [plans, selectedPlanId]);
+
+  const clinicalClientUserId = useMemo(
+    () => selectedAppointment?.clientUserId ?? selectedAppointment?.walkIn?.linkedUserId ?? null,
+    [selectedAppointment?.clientUserId, selectedAppointment?.walkIn?.linkedUserId],
+  );
+  const isWalkInWithoutApp =
+    Boolean(selectedAppointment?.walkInClientId) && !selectedAppointment?.clientUserId && !clinicalClientUserId;
 
   const relevantStudioId = selectedAppointment?.studioId ?? (studioId.trim() ? studioId.trim() : null);
 
@@ -225,18 +232,18 @@ export function TreatmentFlowPage() {
   }, [allowed, loadServices, relevantStudioId]);
 
   useEffect(() => {
-    if (!selectedAppointment?.clientUserId) {
+    if (!clinicalClientUserId) {
       setPlans([]);
       setSelectedPlanId('');
       setPlanForm(emptyPlanForm());
       setMedicalCardForm(emptyMedicalCardForm());
       return;
     }
-    void loadPlans(selectedAppointment.clientUserId);
-  }, [selectedAppointment?.clientUserId, loadPlans]);
+    void loadPlans(clinicalClientUserId);
+  }, [clinicalClientUserId, loadPlans]);
 
   useEffect(() => {
-    if (!selectedAppointment?.clientUserId || !selectedAppointmentId) {
+    if (!clinicalClientUserId || !selectedAppointmentId) {
       return;
     }
     let cancelled = false;
@@ -245,7 +252,7 @@ export function TreatmentFlowPage() {
     void (async () => {
       try {
         const data = await apiRequest<MedicalCardBasics>(
-          `/clients/${selectedAppointment.clientUserId}/medical-card?appointmentId=${encodeURIComponent(selectedAppointmentId)}`,
+          `/clients/${clinicalClientUserId}/medical-card?appointmentId=${encodeURIComponent(selectedAppointmentId)}`,
         );
         if (cancelled) return;
         setMedicalCardForm({
@@ -265,10 +272,10 @@ export function TreatmentFlowPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedAppointment?.clientUserId, selectedAppointmentId]);
+  }, [clinicalClientUserId, selectedAppointmentId]);
 
   async function saveMedicalCard() {
-    if (!selectedAppointment?.clientUserId || !selectedAppointmentId) return;
+    if (!clinicalClientUserId || !selectedAppointmentId) return;
     setSavingMedicalCard(true);
     setError(null);
     setNotice(null);
@@ -280,7 +287,7 @@ export function TreatmentFlowPage() {
         chronicConditions: medicalCardForm.chronicConditions,
         contraindications: medicalCardForm.contraindications,
       };
-      const updated = await apiRequest<MedicalCardBasics>(`/clients/${selectedAppointment.clientUserId}/medical-card`, {
+      const updated = await apiRequest<MedicalCardBasics>(`/clients/${clinicalClientUserId}/medical-card`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -346,7 +353,7 @@ export function TreatmentFlowPage() {
   }
 
   async function createPlan() {
-    if (!selectedAppointment?.clientUserId) return;
+    if (!clinicalClientUserId || !selectedAppointment) return;
     setSavingPlan(true);
     setError(null);
     setNotice(null);
@@ -362,13 +369,13 @@ export function TreatmentFlowPage() {
         reason: planForm.reason.trim() || undefined,
         comment: planForm.comment.trim() || undefined,
       };
-      await apiRequest(`/clients/${selectedAppointment.clientUserId}/treatment-plans`, {
+      await apiRequest(`/clients/${clinicalClientUserId}/treatment-plans`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       setNotice('План лечения создан');
-      await loadPlans(selectedAppointment.clientUserId);
+      await loadPlans(clinicalClientUserId);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Не удалось создать план');
     } finally {
@@ -377,7 +384,7 @@ export function TreatmentFlowPage() {
   }
 
   async function updatePlan() {
-    if (!selectedAppointment?.clientUserId || !selectedPlanId) return;
+    if (!clinicalClientUserId || !selectedPlanId) return;
     setSavingPlan(true);
     setError(null);
     setNotice(null);
@@ -392,13 +399,13 @@ export function TreatmentFlowPage() {
         reason: planForm.reason.trim() || undefined,
         comment: planForm.comment.trim() || undefined,
       };
-      await apiRequest(`/clients/${selectedAppointment.clientUserId}/treatment-plans/${selectedPlanId}`, {
+      await apiRequest(`/clients/${clinicalClientUserId}/treatment-plans/${selectedPlanId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       setNotice('План лечения обновлен');
-      await loadPlans(selectedAppointment.clientUserId);
+      await loadPlans(clinicalClientUserId);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Не удалось обновить план');
     } finally {
@@ -442,12 +449,25 @@ export function TreatmentFlowPage() {
       {notice ? <div className="success-banner">{notice}</div> : null}
 
       {!selectedAppointment ? (
-        <p style={{ color: 'var(--muted)' }}>{loading ? 'Загрузка визитов…' : 'Нет доступных визитов с клиентом.'}</p>
+        <p style={{ color: 'var(--muted)' }}>
+          {loading
+            ? 'Загрузка визитов…'
+            : 'Нет записей с клиентом. Проверьте студию и период (±14 / +30 дней) или создайте запись в календаре.'}
+        </p>
       ) : (
         <>
+          {isWalkInWithoutApp ? (
+            <p style={{ color: 'var(--muted)', marginTop: 0 }}>
+              Клиент записан без приложения — протокол визита доступен. Карта пациента и план лечения станут доступны после
+              регистрации клиента в приложении (телефон привяжется автоматически).
+            </p>
+          ) : null}
+
           <div className="surface-card">
             <h2 style={{ marginTop: 0 }}>Карта пациента</h2>
-            {medicalCardLoading ? (
+            {isWalkInWithoutApp ? (
+              <p style={{ color: 'var(--muted)' }}>Недоступно для клиента без приложения.</p>
+            ) : medicalCardLoading ? (
               <p style={{ color: 'var(--muted)' }}>Загрузка данных карты…</p>
             ) : (
               <div className="grid two-col">
@@ -494,7 +514,7 @@ export function TreatmentFlowPage() {
                 type="button"
                 className="primary"
                 onClick={() => void saveMedicalCard()}
-                disabled={savingMedicalCard || medicalCardLoading}
+                disabled={savingMedicalCard || medicalCardLoading || isWalkInWithoutApp}
               >
                 {savingMedicalCard ? 'Сохранение…' : 'Сохранить карту'}
               </button>
@@ -600,6 +620,7 @@ export function TreatmentFlowPage() {
           <div className="surface-card">
             <div className="toolbar">
               <h2 style={{ margin: 0, flex: 1 }}>План лечения</h2>
+              {!isWalkInWithoutApp ? (
               <div className="field" style={{ minWidth: 280, marginBottom: 0 }}>
                 <label htmlFor="tf-plan-select">Существующий план</label>
                 <select
@@ -620,8 +641,13 @@ export function TreatmentFlowPage() {
                   ))}
                 </select>
               </div>
+              ) : null}
             </div>
 
+            {isWalkInWithoutApp ? (
+              <p style={{ color: 'var(--muted)' }}>Недоступно для клиента без приложения.</p>
+            ) : (
+            <>
             <div className="grid two-col">
               <div className="field">
                 <label htmlFor="tf-plan-title">Название плана</label>
@@ -705,8 +731,10 @@ export function TreatmentFlowPage() {
                 {savingPlan ? 'Сохранение…' : 'Обновить план'}
               </button>
             </div>
+            </>
+            )}
 
-            {selectedPlan?.revisions && selectedPlan.revisions.length > 0 ? (
+            {!isWalkInWithoutApp && selectedPlan?.revisions && selectedPlan.revisions.length > 0 ? (
               <div style={{ marginTop: '1rem' }}>
                 <h3 style={{ marginBottom: '0.6rem' }}>История версий</h3>
                 <div className="table-wrap sticky-head">
