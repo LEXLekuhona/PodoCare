@@ -60,6 +60,9 @@ if [[ "${NO_CACHE_API:-0}" == "1" ]]; then
   "${COMPOSE[@]}" build --no-cache api
 fi
 
+echo "==> docker down (clear stale containers before recreate)"
+"${COMPOSE[@]}" down --remove-orphans
+
 echo "==> docker up (build + recreate api, admin)"
 pnpm docker:up:prod
 

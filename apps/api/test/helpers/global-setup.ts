@@ -35,6 +35,7 @@ export default async function globalSetup(): Promise<void> {
   process.env.JWT_REFRESH_SECRET = randomBytes(48).toString('base64');
   process.env.DATA_ENCRYPTION_KEY = randomBytes(32).toString('base64');
   process.env.OTP_PROVIDER = 'console';
+  process.env.API_GLOBAL_PREFIX = 'api/v1';
 
   console.log('🏗  Применение миграций Prisma…');
   execSync('pnpm prisma migrate deploy', {
@@ -42,8 +43,7 @@ export default async function globalSetup(): Promise<void> {
     env: { ...process.env, DATABASE_URL: databaseUrl },
   });
 
-  // Jest запускает globalSetup/globalTeardown в разных процессах, поэтому globalThis не надёжен.
-  // Сохраняем метаданные контейнеров в файл, доступный teardown.
+  // Jest globalSetup runs in a separate process — persist env for test workers and teardown.
   const infoPath = join(process.cwd(), '.testcontainers.json');
   writeFileSync(
     infoPath,
@@ -51,6 +51,18 @@ export default async function globalSetup(): Promise<void> {
       {
         postgresId: postgres.getId(),
         redisId: redis.getId(),
+        env: {
+          DATABASE_URL: databaseUrl,
+          TEST_DATABASE_URL: databaseUrl,
+          REDIS_URL: redisUrl,
+          NODE_ENV: 'test',
+          LOG_LEVEL: 'silent',
+          JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET,
+          JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
+          DATA_ENCRYPTION_KEY: process.env.DATA_ENCRYPTION_KEY,
+          OTP_PROVIDER: 'console',
+          API_GLOBAL_PREFIX: 'api/v1',
+        },
       },
       null,
       2,

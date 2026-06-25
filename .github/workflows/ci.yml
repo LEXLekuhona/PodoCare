@@ -1,3 +1,4 @@
+# CI gate for main/develop. Deploy staging listens via workflow_run on successful push to main.
 name: CI
 
 on:
