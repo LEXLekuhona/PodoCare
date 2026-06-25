@@ -63,8 +63,20 @@ fi
 echo "==> docker down (clear stale containers before recreate)"
 "${COMPOSE[@]}" down --remove-orphans
 
+docker_up_prod() {
+  pnpm docker:up:prod
+}
+
 echo "==> docker up (build + recreate api, admin)"
-pnpm docker:up:prod
+if ! docker_up_prod; then
+  echo "deploy-staging: docker up failed — pruning broken BuildKit cache and retrying once" >&2
+  docker builder prune -af >/dev/null 2>&1 || true
+  if [[ "${NO_CACHE_API:-0}" != "1" ]]; then
+    echo "==> docker build api (--no-cache, retry)"
+    "${COMPOSE[@]}" build --no-cache api
+  fi
+  docker_up_prod
+fi
 
 echo "==> wait for API health/live"
 ready=0
