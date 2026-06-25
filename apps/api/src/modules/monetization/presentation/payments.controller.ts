@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-imports -- DTO как классы для ValidationPipe */
 import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
@@ -5,11 +6,10 @@ import { CurrentUser } from '../../auth/infrastructure/current-user.decorator';
 import { JwtAuthGuard } from '../../auth/infrastructure/jwt-auth.guard';
 import { Roles } from '../../auth/infrastructure/roles.decorator';
 import { RolesGuard } from '../../auth/infrastructure/roles.guard';
-import { COMMERCE_STAFF_ROLES } from '../monetization.constants';
-
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { PaymentsService } from '../application/payments.service';
-import type { RefundPaymentDto } from './dto/refund-payment.dto';
+import { COMMERCE_STAFF_ROLES } from '../monetization.constants';
+import { RefundPaymentDto } from './dto/refund-payment.dto';
+
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 
 @ApiTags('payments')

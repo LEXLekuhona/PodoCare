@@ -23,16 +23,18 @@ import { RolesGuard } from '../../auth/infrastructure/roles.guard'
 import { AppointmentsService } from '../application/appointments.service'
 // Nest ValidationPipe relies on runtime metadata for DTO classes.
 // `import type` breaks `design:paramtypes`, causing whitelist validation to reject all properties.
-import type { BookingSlotsQueryDto } from './dto/booking-slots-query.dto'
-import type { CancelByClientDto } from './dto/cancel-by-client.dto'
-import type { CancelByStudioDto } from './dto/cancel-by-studio.dto'
-import type { CreateAppointmentProtocolDto } from './dto/create-appointment-protocol.dto'
-import type { CreateAppointmentDto } from './dto/create-appointment.dto'
-import type { CreateWalkInClientDto } from './dto/create-walk-in-client.dto'
-import type { ListAppointmentsQueryDto } from './dto/list-appointments-query.dto'
-import type { SearchWalkInClientsQueryDto } from './dto/search-walk-in-clients.query.dto'
-import type { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto'
-import type { UpdateAppointmentProtocolDto } from './dto/update-appointment-protocol.dto'
+/* eslint-disable @typescript-eslint/consistent-type-imports -- DTO classes for @Body() / @Query() metadata */
+import { BookingSlotsQueryDto } from './dto/booking-slots-query.dto'
+import { CancelByClientDto } from './dto/cancel-by-client.dto'
+import { CancelByStudioDto } from './dto/cancel-by-studio.dto'
+import { CreateAppointmentProtocolDto } from './dto/create-appointment-protocol.dto'
+import { CreateAppointmentDto } from './dto/create-appointment.dto'
+import { CreateWalkInClientDto } from './dto/create-walk-in-client.dto'
+import { ListAppointmentsQueryDto } from './dto/list-appointments-query.dto'
+import { SearchWalkInClientsQueryDto } from './dto/search-walk-in-clients.query.dto'
+import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto'
+import { UpdateAppointmentProtocolDto } from './dto/update-appointment-protocol.dto'
+/* eslint-enable @typescript-eslint/consistent-type-imports */
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy'
 
 @ApiTags('appointments')

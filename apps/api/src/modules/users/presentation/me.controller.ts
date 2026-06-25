@@ -22,8 +22,10 @@ import { JwtAuthGuard } from '../../auth/infrastructure/jwt-auth.guard';
 import { MeService } from '../application/me.service';
 // Nest ValidationPipe relies on runtime metadata for DTO classes.
 // `import type` breaks `design:paramtypes`, causing whitelist validation to reject all properties.
-import type { RecordConsentsDto } from './dto/record-consents.dto';
-import type { UpdateMeDto } from './dto/update-me.dto';
+/* eslint-disable @typescript-eslint/consistent-type-imports -- DTO classes for @Body() metadata */
+import { RecordConsentsDto } from './dto/record-consents.dto';
+import { UpdateMeDto } from './dto/update-me.dto';
+/* eslint-enable @typescript-eslint/consistent-type-imports */
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 
 @ApiTags('me')

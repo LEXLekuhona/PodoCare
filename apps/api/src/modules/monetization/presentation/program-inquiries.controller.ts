@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-imports -- DTO как классы для ValidationPipe */
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@srs/shared-types';
@@ -6,12 +7,11 @@ import { CurrentUser } from '../../auth/infrastructure/current-user.decorator';
 import { JwtAuthGuard } from '../../auth/infrastructure/jwt-auth.guard';
 import { Roles } from '../../auth/infrastructure/roles.decorator';
 import { RolesGuard } from '../../auth/infrastructure/roles.guard';
-import { COMMERCE_STAFF_ROLES } from '../monetization.constants';
-
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { ProgramInquiriesService } from '../application/program-inquiries.service';
-import type { CreateProgramInquiryDto } from './dto/create-program-inquiry.dto';
-import type { PatchProgramInquiryDto } from './dto/patch-program-inquiry.dto';
+import { COMMERCE_STAFF_ROLES } from '../monetization.constants';
+import { CreateProgramInquiryDto } from './dto/create-program-inquiry.dto';
+import { PatchProgramInquiryDto } from './dto/patch-program-inquiry.dto';
+
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 import type { ProgramInquiryStatus } from '@prisma/client';
 

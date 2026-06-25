@@ -12,10 +12,12 @@ import { RolesGuard } from '../../auth/infrastructure/roles.guard';
 import { QuizService } from '../application/quiz.service';
 // Nest ValidationPipe relies on runtime metadata for DTO classes.
 // `import type` breaks `design:paramtypes`, causing whitelist validation to reject all properties.
-import type { CreateQuizAdminDto } from './dto/create-quiz-admin.dto';
-import type { CreateQuizSessionDto } from './dto/create-quiz-session.dto';
-import type { SubmitQuizAnswerDto } from './dto/submit-quiz-answer.dto';
-import type { UpdateQuizAdminDto } from './dto/update-quiz-admin.dto';
+/* eslint-disable @typescript-eslint/consistent-type-imports -- DTO classes for @Body() metadata */
+import { CreateQuizAdminDto } from './dto/create-quiz-admin.dto';
+import { CreateQuizSessionDto } from './dto/create-quiz-session.dto';
+import { SubmitQuizAnswerDto } from './dto/submit-quiz-answer.dto';
+import { UpdateQuizAdminDto } from './dto/update-quiz-admin.dto';
+/* eslint-enable @typescript-eslint/consistent-type-imports */
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 
 const QUIZ_ADMIN_ROLES = [UserRole.SuperAdmin, UserRole.NetworkOwner, UserRole.StudioAdmin] as const;

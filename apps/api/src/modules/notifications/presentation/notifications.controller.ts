@@ -9,17 +9,19 @@ import { JwtAuthGuard } from '../../auth/infrastructure/jwt-auth.guard';
 import { Roles } from '../../auth/infrastructure/roles.decorator';
 import { RolesGuard } from '../../auth/infrastructure/roles.guard';
 
-// Nest ValidationPipe relies on runtime metadata for DTO classes.
-// `import type` breaks `design:paramtypes`, causing whitelist validation to reject all properties.
-import type { UpdateNotificationTemplateDto } from './dto/update-notification-template.dto';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
 import { NotificationsService } from '../application/notifications.service';
-import type { CreateNotificationTemplateDto } from './dto/create-notification-template.dto';
-import type { CreateReminderPolicyDto } from './dto/create-reminder-policy.dto';
-import type { SendSmsDto } from './dto/send-sms.dto';
-import type { UpdateReminderPolicyDto } from './dto/update-reminder-policy.dto';
-import type { UpsertNotificationPreferenceDto } from './dto/upsert-notification-preference.dto';
-import type { UpsertPushDeviceDto } from './dto/upsert-push-device.dto';
+// Nest ValidationPipe relies on runtime metadata for DTO classes.
+// `import type` breaks `design:paramtypes`, causing whitelist validation to reject all properties.
+/* eslint-disable @typescript-eslint/consistent-type-imports -- DTO classes for @Body() / @Query() metadata */
+import { CreateNotificationTemplateDto } from './dto/create-notification-template.dto';
+import { CreateReminderPolicyDto } from './dto/create-reminder-policy.dto';
+import { SendSmsDto } from './dto/send-sms.dto';
+import { UpdateNotificationTemplateDto } from './dto/update-notification-template.dto';
+import { UpdateReminderPolicyDto } from './dto/update-reminder-policy.dto';
+import { UpsertNotificationPreferenceDto } from './dto/upsert-notification-preference.dto';
+import { UpsertPushDeviceDto } from './dto/upsert-push-device.dto';
+/* eslint-enable @typescript-eslint/consistent-type-imports */
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
 
 class ListTemplatesQueryDto {
