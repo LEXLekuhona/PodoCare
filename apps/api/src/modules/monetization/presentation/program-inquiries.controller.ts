@@ -8,7 +8,8 @@ import { Roles } from '../../auth/infrastructure/roles.decorator';
 import { RolesGuard } from '../../auth/infrastructure/roles.guard';
 import { COMMERCE_STAFF_ROLES } from '../monetization.constants';
 
-import type { ProgramInquiriesService } from '../application/program-inquiries.service';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata requires runtime import
+import { ProgramInquiriesService } from '../application/program-inquiries.service';
 import type { CreateProgramInquiryDto } from './dto/create-program-inquiry.dto';
 import type { PatchProgramInquiryDto } from './dto/patch-program-inquiry.dto';
 import type { JwtAccessPayload } from '../../auth/infrastructure/jwt.strategy';
